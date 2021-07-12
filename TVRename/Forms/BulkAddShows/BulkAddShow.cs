@@ -1,19 +1,19 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
-using System.Collections.Generic;
-using System.Linq;
-using System.Windows.Forms;
-using System.Threading;
 using Alphaleonis.Win32.Filesystem;
-using DirectoryInfo = Alphaleonis.Win32.Filesystem.DirectoryInfo;
 using DaveChambers.FolderBrowserDialogEx;
 using JetBrains.Annotations;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Windows.Forms;
+using DirectoryInfo = Alphaleonis.Win32.Filesystem.DirectoryInfo;
 
 namespace TVRename
 {
@@ -26,7 +26,7 @@ namespace TVRename
     ///          the designers will not be able to interact properly with localized
     ///          resources associated with this form.
     /// </summary>
-    public partial class FolderMonitor : Form
+    public partial class BulkAddShow : Form
     {
         private FolderMonitorProgress? progressDialog;
         public int FmpPercent;
@@ -34,11 +34,13 @@ namespace TVRename
         public CancellationTokenSource TokenSource;
         private readonly TVDoc mDoc;
         private readonly BulkAddSeriesManager engine;
+        private readonly UI mainUi;
 
-        public FolderMonitor(TVDoc doc,BulkAddSeriesManager bam)
+        public BulkAddShow(TVDoc doc, BulkAddSeriesManager bam,UI mainUi)
         {
             mDoc = doc;
             engine = bam;
+            this.mainUi = mainUi;
 
             InitializeComponent();
 
@@ -77,10 +79,10 @@ namespace TVRename
         {
             TVSettings.Instance.LibraryFolders.Sort();
             TVSettings.Instance.IgnoreFolders.Sort();
-            
+
             lstFMMonitorFolders.BeginUpdate();
             lstFMMonitorFolders.Items.Clear();
-            
+
             foreach (string folder in TVSettings.Instance.LibraryFolders)
             {
                 lstFMMonitorFolders.Items.Add(folder);
@@ -215,7 +217,7 @@ namespace TVRename
             FmpUpto = "Checking folders";
             FmpPercent = 0;
 
-            Thread fmpshower = new Thread(FmpShower){Name = "'Bulk Add Shows' Progress (Folder Check)"};
+            Thread fmpshower = new Thread(FmpShower) { Name = "'Bulk Add Shows' Progress (Folder Check)" };
             fmpshower.Start();
 
             while (progressDialog is null || !progressDialog.Ready)
@@ -223,7 +225,7 @@ namespace TVRename
                 Thread.Sleep(10);
             }
 
-            engine.CheckFolders(cts.Token, UpdateProgress,true,true);
+            engine.CheckFolders(cts.Token, UpdateProgress, true, true);
             cts.Cancel();
             FillNewShowList(false);
         }
@@ -258,7 +260,7 @@ namespace TVRename
                     DirectoryInfo di = new DirectoryInfo(path);
                     if (di.Exists)
                     {
-                        engine.CheckFolderForShows(di, true, true,true);
+                        engine.CheckFolderForShows(di, true, true, true);
                         FillNewShowList(true);
                     }
                 }
@@ -325,7 +327,7 @@ namespace TVRename
             FmpUpto = "Identifying shows";
             FmpPercent = 0;
 
-            Thread fmpshower = new Thread(FmpShower) {Name = "Bulk Add Shows Progress (Full Auto)"};
+            Thread fmpshower = new Thread(FmpShower) { Name = "Bulk Add Shows Progress (Full Auto)" };
             fmpshower.Start();
 
             while (progressDialog is null || !progressDialog.Ready)
@@ -340,18 +342,18 @@ namespace TVRename
             {
                 FmpPercent = 100 * n++ / n2;
 
-               if (cts.IsCancellationRequested)
-               {
-                   break;
-               }
+                if (cts.IsCancellationRequested)
+                {
+                    break;
+                }
 
-               if (ai.CodeKnown)
-               {
-                   continue;
-               }
+                if (ai.CodeKnown)
+                {
+                    continue;
+                }
 
-               BulkAddSeriesManager.GuessShowItem(ai,mDoc.TvLibrary,true);
-                
+                BulkAddSeriesManager.GuessShowItem(ai, mDoc.TvLibrary, true);
+
                 // update our display
                 UpdateListItem(ai, true);
                 lvFMNewShows.Update();
@@ -374,7 +376,7 @@ namespace TVRename
 
             foreach (ListViewItem lvi in lvFMNewShows.SelectedItems)
             {
-                PossibleNewTvShow ai = (PossibleNewTvShow) lvi.Tag;
+                PossibleNewTvShow ai = (PossibleNewTvShow)lvi.Tag;
                 engine.AddItems.Remove(ai);
             }
 
@@ -394,9 +396,9 @@ namespace TVRename
                 return;
             }
 
-            foreach (ListViewItem lvi in lvFMNewShows.SelectedItems)
+            foreach (PossibleNewTvShow ai in lvFMNewShows.SelectedItems.Cast<ListViewItem>()
+                .Select(lvi => (PossibleNewTvShow)lvi.Tag))
             {
-                PossibleNewTvShow ai = (PossibleNewTvShow)lvi.Tag;
                 TVSettings.Instance.IgnoreFolders.Add(ai.Folder.FullName.ToLower());
                 engine.AddItems.Remove(ai);
             }
@@ -488,21 +490,18 @@ namespace TVRename
             }
 
             lvi.Tag = ai;
-            lvi.ImageIndex=ai.CodeKnown&&!string.IsNullOrWhiteSpace(ai.Folder.FullName)?1:0;
+            lvi.ImageIndex = ai.CodeKnown && !string.IsNullOrWhiteSpace(ai.Folder.FullName) ? 1 : 0;
         }
 
         private void UpdateListItem(PossibleNewTvShow ai, bool makevis)
         {
-            foreach (ListViewItem lvi in lvFMNewShows.Items)
+            foreach (ListViewItem lvi in lvFMNewShows.Items.Cast<ListViewItem>().Where(lvi => lvi.Tag == ai))
             {
-                if (lvi.Tag == ai)
-                {
-                    UpdateResultEntry(ai, lvi);
+                UpdateResultEntry(ai, lvi);
 
-                    if (makevis)
-                    {
-                        lvi.EnsureVisible();
-                    }
+                if (makevis)
+                {
+                    lvi.EnsureVisible();
                 }
             }
         }
@@ -517,7 +516,7 @@ namespace TVRename
                     return;
                 }
 
-                engine.AddAllToMyShows();
+                engine.AddAllToMyShows(mainUi);
             }
 
             Close();
@@ -535,22 +534,24 @@ namespace TVRename
                 return;
             }
 
-            if (fme.CodeKnown)
+            if (!fme.CodeKnown)
             {
-                switch (fme.Provider)
-                {
-                    case TVDoc.ProviderType.TheTVDB:
-                        Helpers.OpenUrl(TheTVDB.API.WebsiteShowUrl(fme.ProviderCode));
-                        break;
-                    case TVDoc.ProviderType.TVmaze:
-                        Helpers.OpenUrl(TVmaze.LocalCache.Instance.GetSeries(fme.ProviderCode)?.WebUrl);
-                        break;
-                    case TVDoc.ProviderType.TMDB:
-                        Helpers.OpenUrl($"https://www.themoviedb.org/tv/{fme.ProviderCode}");
-                        break;
-                    default:
-                        break;
-                }
+                return;
+            }
+
+            switch (fme.Provider)
+            {
+                case TVDoc.ProviderType.TheTVDB:
+                    Helpers.OpenUrl(TheTVDB.API.WebsiteShowUrl(fme.ProviderCode));
+                    break;
+
+                case TVDoc.ProviderType.TVmaze:
+                    Helpers.OpenUrl(TVmaze.LocalCache.Instance.GetSeries(fme.ProviderCode)?.WebUrl ?? string.Empty);
+                    break;
+
+                case TVDoc.ProviderType.TMDB:
+                    Helpers.OpenUrl(TMDB.API.WebsiteShowUrl(fme.ProviderCode));
+                    break;
             }
         }
 
@@ -586,12 +587,12 @@ namespace TVRename
         private void EditEntry([NotNull] PossibleNewTvShow fme)
         {
             BulkAddEditShow ed = new BulkAddEditShow(fme);
-            if (ed.ShowDialog(this) != DialogResult.OK|| ed.Code == -1)
+            if (ed.ShowDialog(this) != DialogResult.OK || ed.Code == -1)
             {
                 return;
             }
 
-            fme.SetId(ed.Code,ed.ProviderType);
+            fme.UpdateId(ed.Code, ed.ProviderType);
         }
 
         private void lstFMMonitorFolders_SelectedIndexChanged(object sender, System.EventArgs e)

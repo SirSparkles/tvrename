@@ -1,11 +1,11 @@
+using Alphaleonis.Win32.Filesystem;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using Alphaleonis.Win32.Filesystem;
-using JetBrains.Annotations;
 
 namespace TVRename.Forms.Tools
 {
@@ -62,17 +62,16 @@ namespace TVRename.Forms.Tools
             }
 
             Point pt = ((ListView)sender).PointToScreen(new Point(e.X, e.Y));
-            FileIssue? iss = (FileIssue)olvFileIssues.FocusedObject;
-            if (iss == null)
+            if (!(olvFileIssues.FocusedObject is FileIssue iss))
             {
                 return;
             }
 
             showRightClickMenu.Items.Clear();
 
-            AddRcMenuItem("View on TVDB...", (s, args) => TvSourceFor(iss.Show));
+            AddRcMenuItem("View on Source Provider...", (s, args) => TvSourceFor(iss.Show));
             AddRcMenuItem("Open Folder", (s, args) => Helpers.OpenFolderSelectFile(iss.File.FullName));
-            AddRcMenuItem("Episode Guide", (s, args) => MainWindow.GotoEpguideFor(iss.Show,true));
+            AddRcMenuItem("Episode Guide", (s, args) => MainWindow.GotoEpguideFor(iss.Show, true));
 
             showRightClickMenu.Show(pt);
         }
@@ -94,7 +93,7 @@ namespace TVRename.Forms.Tools
 
         private void AddRcMenuItem(string name, EventHandler command)
         {
-            ToolStripMenuItem tsi = new ToolStripMenuItem(name);
+            ToolStripMenuItem tsi = new ToolStripMenuItem(name.Replace("&", "&&"));
             tsi.Click += command;
             showRightClickMenu.Items.Add(tsi);
         }
@@ -108,13 +107,13 @@ namespace TVRename.Forms.Tools
         private void UpdateIssues(BackgroundWorker bw)
         {
             List<string> doneFolders = new List<string>();
-            int total = mDoc.TvLibrary.Count;
+            int total = mDoc.TvLibrary.Shows.Count();
             int current = 0;
 
             foreach (ShowConfiguration show in mDoc.TvLibrary.Shows.OrderBy(item => item.ShowName))
             {
                 Logger.Info($"Finding old eps for {show.ShowName}");
-                bw.ReportProgress(100*current++/total,show.ShowName);
+                bw.ReportProgress(100 * current++ / total, show.ShowName);
 
                 Dictionary<int, SafeList<string>> folders = show.AllFolderLocations(true);
 
@@ -207,13 +206,13 @@ namespace TVRename.Forms.Tools
 
                 //first column
                 if (col.Index == 0)
-                    //we have to manually take care of tree structure, checkbox and image
+                //we have to manually take care of tree structure, checkbox and image
                 {
                     col.Width += 16 + 16 + olv.SmallImageSize.Width;
                 }
                 //last column
                 else if (col.Index == olv.Columns.Count - 1)
-                    //avoid "fill free space" bug
+                //avoid "fill free space" issue
                 {
                     col.Width = colWidthBeforeAutoResize > colWidthAfterAutoResizeByContent ? colWidthBeforeAutoResize : colWidthAfterAutoResizeByContent;
                 }

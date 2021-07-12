@@ -1,13 +1,13 @@
+using Alphaleonis.Win32.Filesystem;
 using System;
 using System.Collections.Concurrent;
-using Alphaleonis.Win32.Filesystem;
 
 namespace TVRename
 {
     public abstract class MediaCache
     {
-
         protected FileInfo CacheFile;
+
         // ReSharper disable once InconsistentNaming
         public string? CurrentDLTask;
 
@@ -16,31 +16,40 @@ namespace TVRename
         public bool LoadOk;
 
         public abstract TVDoc.ProviderType Provider();
-        
+
         protected static readonly NLog.Logger LOGGER = NLog.LogManager.GetCurrentClassLogger();
-
-
-        // ReSharper disable once InconsistentNaming
-        public readonly object LANGUAGE_LOCK = new object();
-        public Languages? LanguageList;
 
         // ReSharper disable once InconsistentNaming
         public readonly object MOVIE_LOCK = new object();
+
         protected readonly ConcurrentDictionary<int, CachedMovieInfo> Movies = new ConcurrentDictionary<int, CachedMovieInfo>();
 
         // ReSharper disable once InconsistentNaming
         public readonly object SERIES_LOCK = new object();
+
         protected readonly ConcurrentDictionary<int, CachedSeriesInfo> Series = new ConcurrentDictionary<int, CachedSeriesInfo>();
 
-        public Language? PreferredLanguage =>
-            LanguageList?.GetLanguageFromCode(TVSettings.Instance.PreferredLanguageCode);
+        private ConcurrentDictionary<int, int> forceReloadOn = new ConcurrentDictionary<int, int>();
+        protected bool DoWeForceReloadFor(int code)
+        {
+            return forceReloadOn.ContainsKey(code) || !HasSeries(code);
+        }
 
-        public Language? GetLanguageFromCode(string customLanguageCode) => LanguageList?.GetLanguageFromCode(customLanguageCode);
+        protected void HaveReloaded(int code)
+        {
+            forceReloadOn.TryRemove(code, out _);
+        }
+        public void NeedToReload(int code)
+        {
+            forceReloadOn.TryAdd(code, code);
+        }
 
-        public bool IsConnected { get; protected set; }
+        protected bool IsConnected { get; set; }
 
-        public abstract bool EnsureUpdated(SeriesSpecifier s, bool bannersToo, bool showErrorMsgBox);
+        public abstract bool EnsureUpdated(ISeriesSpecifier s, bool bannersToo, bool showErrorMsgBox);
+
         protected void SayNothing() => Say(null);
+
         protected void Say(string? s)
         {
             CurrentDLTask = s;
@@ -49,6 +58,7 @@ namespace TVRename
                 LOGGER.Info("Status on screen updated: {0}", s);
             }
         }
+
         public ConcurrentDictionary<int, CachedMovieInfo> CachedMovieData
         {
             get
@@ -71,13 +81,46 @@ namespace TVRename
             }
         }
 
-        public bool HasSeries(int id) => Series.ContainsKey(id);
+        public CachedSeriesInfo? GetSeries(int? id)
+        {
+            if (!id.HasValue)
+            {
+                return null;
+            }
+            lock (SERIES_LOCK)
+            {
+                return HasSeries(id.Value) ? Series[id.Value] : null;
+            }
+        }
 
-        public CachedSeriesInfo? GetSeries(int id) => HasSeries(id) ? Series[id] : null;
+        public bool HasSeries(int id)
+        {
+            lock (SERIES_LOCK)
+            {
+                return Series.ContainsKey(id);
+            }
+        }
 
-        public bool HasMovie(int id) => Movies.ContainsKey(id);
+        public bool HasMovie(int id)
+        {
+            lock (MOVIE_LOCK)
+            {
+                return Movies.ContainsKey(id);
+            }
+        }
 
-        public CachedMovieInfo? GetMovie(int id) => HasMovie(id) ? Movies[id] : null;
+        public CachedMovieInfo? GetMovie(int? id)
+        {
+            if (!id.HasValue)
+            {
+                return null;
+            }
+
+            lock (MOVIE_LOCK)
+            {
+                return HasMovie(id.Value) ? Movies[id.Value] : null;
+            }
+        }
 
         public CachedMediaInfo? GetMedia(int code, MediaConfiguration.MediaType type)
         {
@@ -89,6 +132,8 @@ namespace TVRename
             };
         }
 
-        public abstract void Search(string text, bool showErrorMsgBox, MediaConfiguration.MediaType type, string LanguageCode);
+        public abstract void Search(string text, bool showErrorMsgBox, MediaConfiguration.MediaType type, Locale locale);
+        public abstract int PrimaryKey(ISeriesSpecifier ss);
+        public abstract string CacheSourceName();
     }
 }

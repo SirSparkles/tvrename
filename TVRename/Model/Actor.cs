@@ -1,14 +1,15 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
+using System;
+using JetBrains.Annotations;
 using System.Xml;
 using System.Xml.Linq;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -21,24 +22,32 @@ namespace TVRename
         public int ActorSeriesId { get; }
         public int ActorSortOrder { get; }
 
-        public Actor(int actorId, string? actorImage, string actorName, string? actorRole, int actorSeriesId, int actorSortOrder)
+        public Actor(int actorId, string? actorImage, string actorName, string? actorRole, int actorSeriesId, int? actorSortOrder)
         {
             ActorId = actorId;
             ActorImage = actorImage;
             ActorName = actorName;
             ActorRole = actorRole;
             ActorSeriesId = actorSeriesId;
-            ActorSortOrder = actorSortOrder;
+
+            if (actorSortOrder.HasValue)
+            {
+                ActorSortOrder = actorSortOrder.Value;
+            }
+            else
+            {
+                ActorSortOrder = -1;
+            }
         }
 
         public Actor([NotNull] XElement r)
         {
-            ActorId = r.ExtractInt("Id") ?? throw new SourceConsistencyException("Error Extracting Id for Actor",TVDoc.ProviderType.TheTVDB);
+            ActorId = r.ExtractInt("Id") ?? throw new Exception("Error Extracting Id for Actor");
             ActorImage = r.ExtractString("Image");
             ActorName = r.ExtractString("Name");
             ActorRole = r.ExtractString("Role");
-            ActorSeriesId = r.ExtractInt("SeriesId",-1);
-            ActorSortOrder = r.ExtractInt("SortOrder",-1); 
+            ActorSeriesId = r.ExtractInt("SeriesId", -1);
+            ActorSortOrder = r.ExtractInt("SortOrder", -1);
         }
 
         public Actor(string name)
@@ -50,14 +59,14 @@ namespace TVRename
         {
             writer.WriteStartElement("Actor");
             writer.WriteElement("Id", ActorId);
-            writer.WriteElement("Image", ActorImage);
-            writer.WriteElement("Name", ActorName);
-            writer.WriteElement("Role", ActorRole);
-            writer.WriteElement("SeriesId", ActorSeriesId);
+            writer.WriteElement("Image", ActorImage, true);
+            writer.WriteElement("Name", ActorName, true);
+            writer.WriteElement("Role", ActorRole, true);
+            writer.WriteElement("SeriesId", ActorSeriesId, true);
             writer.WriteElement("SortOrder", ActorSortOrder);
             writer.WriteEndElement();
         }
 
-        public bool AsSelf() => ActorName==ActorRole;
+        public bool AsSelf() => ActorName == ActorRole;
     }
 }

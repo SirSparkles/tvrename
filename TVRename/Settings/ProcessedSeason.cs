@@ -1,15 +1,16 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
-using System;
-using System.Collections.Concurrent;
-using System.Linq;
+//
 using JetBrains.Annotations;
 using NodaTime;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace TVRename
 {
@@ -26,15 +27,17 @@ namespace TVRename
         public enum SeasonType
         {
             dvd,
-            aired
+            aired,
+            absolute
         }
 
-        public readonly ConcurrentDictionary<int,Episode> Episodes;
+        public readonly ConcurrentDictionary<int, Episode> Episodes;
         public readonly int SeasonId;
         public readonly int SeasonNumber;
         public readonly ShowConfiguration Show;
+
         // ReSharper disable once NotAccessedField.Local
-        private readonly SeasonType type;
+        public readonly SeasonType SeasonStyle;
 
         public ProcessedSeason(ShowConfiguration theShow, int number, int seasonId, SeasonType t)
         {
@@ -42,7 +45,7 @@ namespace TVRename
             SeasonNumber = number;
             SeasonId = seasonId;
             Episodes = new ConcurrentDictionary<int, Episode>();
-            type = t;
+            SeasonStyle = t;
         }
 
         // ReSharper disable once InconsistentNaming
@@ -97,7 +100,7 @@ namespace TVRename
                 return SeasonStatus.noneAired;
             }
 
-            // Can happen if a Season has Episodes WITHOUT Airdates. 
+            // Can happen if a Season has Episodes WITHOUT Airdates.
             return SeasonStatus.noEpisodes;
         }
 
@@ -106,7 +109,7 @@ namespace TVRename
             return Episodes.Values.Select(e => e.GetAirDateDt())
                 .Where(adt => adt.HasValue)
                 .Select(adt => adt.Value)
-                .MinOrDefault(airDateTime => airDateTime.Year,9999);
+                .MinOrDefault(airDateTime => airDateTime.Year, 9999);
         }
 
         internal int MaxYear()
@@ -114,7 +117,7 @@ namespace TVRename
             return Episodes.Values.Select(e => e.GetAirDateDt())
                 .Where(adt => adt.HasValue)
                 .Select(adt => adt.Value)
-                .MaxOrDefault(airDateTime => airDateTime.Year,0);
+                .MaxOrDefault(airDateTime => airDateTime.Year, 0);
         }
 
         private bool HasEpisodes => Episodes.Count > 0;
@@ -211,7 +214,7 @@ namespace TVRename
 
         public void AddUpdateEpisode([NotNull] Episode newEpisode)
         {
-            Episodes.AddOrUpdate(newEpisode.EpisodeId,newEpisode,(i, episode) => newEpisode);
+            Episodes.AddOrUpdate(newEpisode.EpisodeId, newEpisode, (i, episode) => newEpisode);
         }
 
         public bool ContainsEpisode(int episodeNumber, SeasonType order)
@@ -223,7 +226,7 @@ namespace TVRename
         {
             if (Episodes.ContainsKey(episodeId))
             {
-                Episodes.TryRemove(episodeId,out _);
+                Episodes.TryRemove(episodeId, out _);
             }
         }
 
@@ -242,14 +245,19 @@ namespace TVRename
                     return TVDBWebsiteUrl;
                 }
 
-                return Show.CachedShow?.Season(SeasonNumber)?.Url; //TODO - IMPROVE HOW TO GET THE SEASON URL
+                return Show.CachedShow?.Season(SeasonNumber)?.Url; 
             }
         }
+
         public bool NextEpisodeIs(int episodeNumber, SeasonType order)
         {
-            int maxEpNum = Episodes.Values.MaxOrDefault(ep => ep.GetEpisodeNumber(order),0);
+            int maxEpNum = Episodes.Values.MaxOrDefault(ep => ep.GetEpisodeNumber(order), 0);
 
-            return episodeNumber==maxEpNum+1;
+            return episodeNumber == maxEpNum + 1;
         }
+
+        public IEnumerable<ShowImage>? Images(MediaImage.ImageType t, MediaImage.ImageSubject s) => Show.CachedShow?.Images(t, s, SeasonNumber);
+
+        public IEnumerable<ShowImage>? Images(MediaImage.ImageType t) => Show.CachedShow?.Images(t);
     }
 }

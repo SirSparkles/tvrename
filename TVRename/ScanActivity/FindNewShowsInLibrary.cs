@@ -1,61 +1,62 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
+using JetBrains.Annotations;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
     internal class FindNewShowsInLibrary : ScanActivity
     {
-        public FindNewShowsInLibrary(TVDoc doc) : base(doc)
+        public FindNewShowsInLibrary(TVDoc doc, TVDoc.ScanSettings settings) : base(doc, settings)
         {
         }
+
         protected override string CheckName() => "Looked in the library for any new shows to be added (bulk add)";
 
-        protected override void DoCheck(SetProgressDelegate prog, TVDoc.ScanSettings settings)
+        protected override void DoCheck(SetProgressDelegate prog)
         {
             BulkAddSeriesManager bam = new BulkAddSeriesManager(MDoc);
-            bam.CheckFolders(settings.Token, prog, false,!settings.Unattended);
-            AskUserAboutShows(settings, bam);
+            bam.CheckFolders(Settings.Token, prog, false, !Settings.Unattended);
+            AskUserAboutShows(bam);
 
             if (!bam.AddItems.Any(s => s.CodeKnown))
             {
                 return;
             }
 
-            var idsToAdd = bam.AddItems.Where(s => s.CodeKnown).Select(folder => new {Code = folder.ProviderCode, folder.Provider}).ToList(); 
-            
-            bam.AddAllToMyShows();
+            var idsToAdd = bam.AddItems.Where(s => s.CodeKnown).Select(folder => new { Code = folder.ProviderCode, folder.Provider }).ToList();
+
+            bam.AddAllToMyShows(Settings.Owner);
             List<ShowConfiguration> addedShows = idsToAdd.Select(s => MDoc.TvLibrary.GetShowItem(s.Code, s.Provider)).ToList();
 
             //add each new show into the shows being scanned
             foreach (ShowConfiguration si in addedShows)
             {
-                settings.Shows.Add(si);
+                Settings.Shows.Add(si);
             }
             LOGGER.Info("Added new shows called: {0}", addedShows.Select(si => si.ShowName).ToCsv());
 
-            MDoc.TvAddedOrEdited(true,settings.Unattended,settings.Hidden,settings.Owner,addedShows);
+            MDoc.TvAddedOrEdited(true, Settings.Unattended, Settings.Hidden, Settings.Owner, addedShows);
         }
 
-        private void AskUserAboutShows(TVDoc.ScanSettings settings, [NotNull] BulkAddSeriesManager bam)
+        private void AskUserAboutShows([NotNull] BulkAddSeriesManager bam)
         {
             foreach (PossibleNewTvShow folder in bam.AddItems)
             {
-                if (settings.Token.IsCancellationRequested)
+                if (Settings.Token.IsCancellationRequested)
                 {
                     break;
                 }
 
-                AskUserAboutShow(folder,settings.Owner);
+                AskUserAboutShow(folder, Settings.Owner);
             }
         }
 
@@ -66,7 +67,7 @@ namespace TVRename
                 return;
             }
 
-            BulkAddSeriesManager.GuessShowItem(folder, MDoc.TvLibrary,true);
+            BulkAddSeriesManager.GuessShowItem(folder, MDoc.TvLibrary, true);
 
             if (folder.CodeKnown)
             {
@@ -85,7 +86,7 @@ namespace TVRename
                 return;
             }
 
-            folder.SetId(code,TVDoc.ProviderType.TheTVDB);
+            folder.UpdateId(code, ed.ProviderType);
         }
 
         public override bool Active() => TVSettings.Instance.DoBulkAddInScan;

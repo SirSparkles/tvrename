@@ -1,8 +1,8 @@
+using System.Collections.Generic;
+using JetBrains.Annotations;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
-using JetBrains.Annotations;
-using TVRename.TheTVDB;
 
 namespace TVRename
 {
@@ -12,6 +12,7 @@ namespace TVRename
         public string? Type;
         public int? CollectionId;
         public string? CollectionName;
+        private MovieImages images = new MovieImages();
 
         public int? Year => FirstAired?.Year;
 
@@ -22,21 +23,18 @@ namespace TVRename
         private void DefaultValues()
         {
         }
-        public CachedMovieInfo()
+
+        public CachedMovieInfo(Locale locale, TVDoc.ProviderType source) : base(locale, source)
         {
             DefaultValues();
         }
 
-        public CachedMovieInfo(int tvdb, int tvmaze, int tmdb) : base(tvdb, tvmaze, tmdb)
+        public CachedMovieInfo(int tvdb, int tvmaze, int tmdb, Locale locale, TVDoc.ProviderType source) : base(tvdb, tvmaze, tmdb, locale, source)
         {
             DefaultValues();
         }
 
-        public CachedMovieInfo(int tvdb, int tvmaze, int tmdb, string langCode) : base(tvdb, tvmaze, tmdb, langCode)
-        {
-            DefaultValues();
-        }
-        public CachedMovieInfo([NotNull] XElement seriesXml)
+        public CachedMovieInfo([NotNull] XElement seriesXml, TVDoc.ProviderType source) : base(source)
         {
             DefaultValues();
             LoadXml(seriesXml);
@@ -80,11 +78,10 @@ namespace TVRename
             {
                 IsSearchResultOnly = false;
             }
-            bool currentLanguageNotSet = LanguageId == -1;
-            string bestLanguageCode = TargetLanguageCode ?? TVSettings.Instance.PreferredLanguageCode;
-            Language optimaLanguage = LocalCache.Instance.GetLanguageFromCode(bestLanguageCode);
-            bool newLanguageOptimal = !(optimaLanguage is null) && o.LanguageId == optimaLanguage.Id;
-            bool useNewDataOverOld = currentLanguageNotSet || newLanguageOptimal;
+            bool currentLanguageNotSet = ActualLocale is null;
+            //            Language optimaLanguage = config o.ActualLocale ?? TVSettings.Instance.PreferredTVDBLanguage;
+            // bool newLanguageOptimal = o.ActualLocale.PreferredLanguage == optimaLanguage;
+            bool useNewDataOverOld = currentLanguageNotSet || o.SrvLastUpdated >= SrvLastUpdated; //TODO - work out cached language and see what's best || newLanguageOptimal;
 
             SrvLastUpdated = o.SrvLastUpdated;
 
@@ -149,10 +146,23 @@ namespace TVRename
                 Genres = o.Genres;
             }
 
+            bool useNewCrew = o.Crew.Any() && useNewDataOverOld;
+            if (!Crew.Any() || useNewCrew)
+            {
+                Crew = o.Crew;
+            }
+
+            bool useNewActors = o.Actors.Any() && useNewDataOverOld;
+            if (!Actors.Any() || useNewActors)
+            {
+                Actors = o.Actors;
+            }
+
             if (useNewDataOverOld)
             {
-                LanguageId = o.LanguageId;
+                ActualLocale = o.ActualLocale;
             }
+            images.MergeImages(o.images);
 
             Dirty = o.Dirty;
             IsSearchResultOnly = o.IsSearchResultOnly;
@@ -186,7 +196,9 @@ namespace TVRename
                     XmlHelper.ReadStringFixQuotesAndSpaces(seriesXml.ExtractStringOrNull("SeriesName") ?? seriesXml.ExtractString("seriesName")));
 
                 SrvLastUpdated = seriesXml.ExtractLong("lastupdated") ?? seriesXml.ExtractLong("lastUpdated", 0);
-                LanguageId = seriesXml.ExtractInt("LanguageId") ?? seriesXml.ExtractInt("languageId") ?? throw new SourceConsistencyException("Error Extracting Language for Series", TVDoc.ProviderType.TheTVDB);
+                int? languageId = seriesXml.ExtractInt("LanguageId") ?? seriesXml.ExtractInt("languageId");
+                string regionCode = seriesXml.ExtractString("RegionCode");
+                ActualLocale = GetLocale(languageId, regionCode);
 
                 CollectionId = seriesXml.ExtractInt("CollectionId");
                 Popularity = seriesXml.ExtractDouble("Popularity") ?? 0;
@@ -195,7 +207,7 @@ namespace TVRename
                 InstagramId = seriesXml.ExtractStringOrNull("InstagramId");
                 FacebookId = seriesXml.ExtractStringOrNull("FacebookId");
                 TagLine = seriesXml.ExtractStringOrNull("TagLine");
-    
+
                 PosterUrl = seriesXml.ExtractString("posterURL");
                 TrailerUrl = seriesXml.ExtractString("TrailerUrl");
                 FanartUrl = seriesXml.ExtractString("FanartUrl");
@@ -218,8 +230,10 @@ namespace TVRename
                 FirstAired = JsonHelper.ParseFirstAired(seriesXml.ExtractStringOrNull("FirstAired") ?? seriesXml.ExtractString("firstAired"));
 
                 LoadActors(seriesXml);
+                LoadCrew(seriesXml);
                 LoadAliases(seriesXml);
                 LoadGenres(seriesXml);
+                LoadImages(seriesXml);
             }
             catch (SourceConsistencyException e)
             {
@@ -228,7 +242,16 @@ namespace TVRename
                 throw e;
             }
         }
-        
+
+        private void LoadImages([NotNull] XElement seriesXml)
+        {
+            images = new MovieImages();
+            foreach (MovieImage s in seriesXml.Descendants("Images").Descendants("MovieImage").Select(xml => new MovieImage(IdCode(Source), Source, xml)))
+            {
+                images.Add(s);
+            }
+        }
+
         public void WriteXml([NotNull] XmlWriter writer)
         {
             writer.WriteStartElement("Movie");
@@ -236,29 +259,30 @@ namespace TVRename
             writer.WriteElement("id", TvdbCode);
             writer.WriteElement("mazeid", TvMazeCode);
             writer.WriteElement("TMDBCode", TmdbCode);
-            writer.WriteElement("SeriesName", Name);
+            writer.WriteElement("SeriesName", Name, true);
             writer.WriteElement("lastupdated", SrvLastUpdated);
-            writer.WriteElement("LanguageId", LanguageId);
+            writer.WriteElement("LanguageId", ActualLocale?.PreferredLanguage?.TvdbId);
+            writer.WriteElement("RegionCode", ActualLocale?.PreferredRegion?.Abbreviation);
             writer.WriteElement("CollectionId", CollectionId);
-            writer.WriteElement("CollectionName", CollectionName);
-            writer.WriteElement("TwitterId", TwitterId);
-            writer.WriteElement("InstagramId", InstagramId);
-            writer.WriteElement("FacebookId", FacebookId);
-            writer.WriteElement("TagLine", TagLine);
+            writer.WriteElement("CollectionName", CollectionName, true);
+            writer.WriteElement("TwitterId", TwitterId, true);
+            writer.WriteElement("InstagramId", InstagramId, true);
+            writer.WriteElement("FacebookId", FacebookId, true);
+            writer.WriteElement("TagLine", TagLine, true);
             writer.WriteElement("posterURL", PosterUrl);
             writer.WriteElement("FanartUrl", FanartUrl);
-            writer.WriteElement("TrailerUrl", TrailerUrl);
-            writer.WriteElement("WebURL", WebUrl);
-            writer.WriteElement("OfficialUrl", OfficialUrl);
+            writer.WriteElement("TrailerUrl", TrailerUrl, true);
+            writer.WriteElement("WebURL", WebUrl, true);
+            writer.WriteElement("OfficialUrl", OfficialUrl, true);
             writer.WriteElement("ShowLanguage", ShowLanguage);
             writer.WriteElement("Type", Type);
-            writer.WriteElement("imdbId", Imdb);
-            writer.WriteElement("rageid", TvRageCode);
-            writer.WriteElement("network", Network);
-            writer.WriteElement("overview", Overview);
+            writer.WriteElement("imdbId", Imdb, true);
+            writer.WriteElement("rageid", TvRageCode, true);
+            writer.WriteElement("network", Network, true);
+            writer.WriteElement("overview", Overview, true);
             writer.WriteElement("rating", ContentRating);
-            writer.WriteElement("runtime", Runtime);
-            writer.WriteElement("seriesId", SeriesId);
+            writer.WriteElement("runtime", Runtime, true);
+            writer.WriteElement("seriesId", SeriesId, true);
             writer.WriteElement("status", Status);
             writer.WriteElement("siteRating", SiteRating, "0.##");
             writer.WriteElement("siteRatingCount", SiteRatingVotes);
@@ -276,8 +300,12 @@ namespace TVRename
                 aa.WriteXml(writer);
             }
             writer.WriteEndElement(); //Actors
-
-
+            writer.WriteStartElement("Crew");
+            foreach (Crew aa in Crew)
+            {
+                aa.WriteXml(writer);
+            }
+            writer.WriteEndElement(); //Crew
             writer.WriteStartElement("Aliases");
             foreach (string a in Aliases)
             {
@@ -292,7 +320,30 @@ namespace TVRename
             }
             writer.WriteEndElement(); //Genres
 
+            writer.WriteStartElement("Images");
+            foreach (MovieImage i in images)
+            {
+                i.WriteXml(writer);
+            }
+            writer.WriteEndElement(); //Images
+
             writer.WriteEndElement(); // cachedSeries
+        }
+
+        public void AddOrUpdateImage(MovieImage image)
+        {
+            images.RemoveAll(s => s.Id == image.Id);
+            images.Add(image);
+        }
+
+        public IEnumerable<MovieImage> Images(MediaImage.ImageType type)
+        {
+            return images.Where(x => x.ImageStyle == type && (x.LanguageCode ?? TargetLocale.LanguageToUse(Source).Abbreviation) == TargetLocale.LanguageToUse(Source).Abbreviation);
+        }
+
+        public IEnumerable<MovieImage> Images(MediaImage.ImageType type, MediaImage.ImageSubject subject)
+        {
+            return images.Where(x => x.ImageStyle == type && x.Subject == subject && (x.LanguageCode ?? TargetLocale.LanguageToUse(Source).Abbreviation ) == TargetLocale.LanguageToUse(Source).Abbreviation);
         }
     }
 }

@@ -1,10 +1,10 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
 using JetBrains.Annotations;
 
@@ -17,14 +17,14 @@ namespace TVRename
     {
         public int Code;
 
-        private readonly CombinedCodeFinder codeFinderControl;
+        private readonly CodeFinder codeFinderControl;
         public TVDoc.ProviderType ProviderType => codeFinderControl.Source;
 
         public BulkAddEditShow([NotNull] PossibleNewTvShow hint)
         {
             InitializeComponent();
 
-            codeFinderControl = new CombinedCodeFinder("",MediaConfiguration.MediaType.tv, TVSettings.Instance.DefaultProvider) {Dock = DockStyle.Fill};
+            codeFinderControl = new TvCodeFinder("", TVSettings.Instance.DefaultProvider) { Dock = DockStyle.Fill };
             codeFinderControl.SelectionChanged += CodeChanged;
             codeFinderControl.lvMatches.DoubleClick += MatchDoubleClick;
             label1.Text = $"Search for {TVSettings.Instance.DefaultProvider.PrettyPrint()} entry, by partial name or ID:";
@@ -35,7 +35,7 @@ namespace TVRename
 
             if (hint.CodeKnown)
             {
-                codeFinderControl.SetHint(hint.ProviderCode.ToString(),hint.Provider); 
+                codeFinderControl.SetHint(hint.ProviderCode.ToString(), hint.Provider);
             }
             else
             {
@@ -43,7 +43,7 @@ namespace TVRename
                 int p = s.LastIndexOf(System.IO.Path.DirectorySeparatorChar);
                 codeFinderControl.SetHint(string.IsNullOrWhiteSpace(hint.RefinedHint)
                     ? s.Substring(p + 1)
-                    : hint.RefinedHint,TVDoc.ProviderType.libraryDefault);
+                    : hint.RefinedHint, TVDoc.ProviderType.libraryDefault);
             }
             Code = -1;
         }

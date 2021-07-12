@@ -1,10 +1,10 @@
+using Alphaleonis.Win32.Filesystem;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading;
-using Alphaleonis.Win32.Filesystem;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -16,10 +16,11 @@ namespace TVRename
 
         //Thread safe counters to work out the progress
         //for scanning
-        private static volatile int CurrentPhaseDirectory;
-        private static volatile int CurrentPhaseTotalDirectory;
-        private static volatile int CurrentPhase;
-        private static volatile int CurrentPhaseTotal;
+        private static int CurrentPhaseDirectory;
+
+        private static int CurrentPhaseTotalDirectory;
+        private static int CurrentPhase;
+        private static int CurrentPhaseTotal;
 
         public BulkAddMovieManager(TVDoc doc)
         {
@@ -31,7 +32,7 @@ namespace TVRename
         {
             try
             {
-                return  di.GetDirectories().Where(d => d.IsImportant()).ToArray();
+                return di.GetDirectories().Where(d => d.IsImportant()).ToArray();
             }
             catch (UnauthorizedAccessException)
             {
@@ -152,12 +153,12 @@ namespace TVRename
 
         private void CheckFolderForShows([NotNull] DirectoryInfo di, CancellationToken token, BackgroundWorker bw, bool fullLogging, bool showErrorMsgBox)
         {
-            int percentComplete = (int)(100.0 / CurrentPhaseTotal * ((1.0 * CurrentPhase) + (1.0 * CurrentPhaseDirectory / CurrentPhaseTotalDirectory)));
+            int percentComplete = (int)(100.0 / CurrentPhaseTotal * (1.0 * CurrentPhase + 1.0 * CurrentPhaseDirectory / CurrentPhaseTotalDirectory));
             if (percentComplete > 100)
             {
                 percentComplete = 100;
             }
-            bw.ReportProgress(percentComplete,di.Name);
+            bw.ReportProgress(percentComplete, di.Name);
             if (!di.Exists)
             {
                 return;
@@ -196,79 +197,82 @@ namespace TVRename
 
             foreach (DirectoryInfo di2 in subDirs)
             {
-                CheckFolderForShows(di2, token,bw, fullLogging, showErrorMsgBox); // not a season folder.. recurse!
+                CheckFolderForShows(di2, token, bw, fullLogging, showErrorMsgBox); // not a season folder.. recurse!
             } // for each directory
         }
 
-        public void AddAllToMyMovies()
+        public void AddAllToMyMovies(UI ui)
         {
-            foreach (PossibleNewMovie ai in AddItems.Where(ai => ai.CodeKnown))
-            {
-                AddToLibrary(ai);
-            }
+            List<MovieConfiguration> movies =  AddToLibrary(AddItems.Where(ai => ai.CodeKnown));
 
-            mDoc.SetDirty();
+            mDoc.MoviesAddedOrEdited(true,false,false,ui, movies);
             AddItems.Clear();
-            mDoc.ExportMovieInfo();
         }
 
-        private void AddToLibrary([NotNull] PossibleNewMovie ai)
+        private List<MovieConfiguration> AddToLibrary([NotNull] IEnumerable<PossibleNewMovie> ais)
         {
-            if (ai.CodeUnknown)
+            List<MovieConfiguration> movies = new List<MovieConfiguration>();
+            foreach (PossibleNewMovie ai in ais)
             {
-                return;
+                if (ai.CodeUnknown)
+                {
+                    continue;
+                }
+
+                string? matchingRoot = TVSettings.Instance.MovieLibraryFolders.FirstOrDefault(s => ai.Directory.FullName.IsSubfolderOf(s));
+                bool isInLibraryFolderFileFinder = matchingRoot.HasValue();
+
+                // see if there is a matching show item
+                MovieConfiguration found = mDoc.FilmLibrary.GetMovie(ai);
+                if (found is null)
+                {
+                    MovieConfiguration newMovie = AddNewMovieToLibrary(ai, isInLibraryFolderFileFinder, matchingRoot);
+                    movies.Add(newMovie);
+                    continue;
+                }
+
+                //We are updating an existing record
+                movies.Add(found);
+                string targetDirectoryName = CustomMovieName.NameFor(found, TVSettings.Instance.MovieFolderFormat);
+                bool inDefaultPath = ai.Directory.Name.Equals(
+                    targetDirectoryName,
+                    StringComparison.CurrentCultureIgnoreCase);
+
+                bool existingLocationIsDefaultToo = found.UseAutomaticFolders && found.AutomaticFolderRoot.In(TVSettings.Instance.MovieLibraryFolders.ToArray());
+
+                if (inDefaultPath && isInLibraryFolderFileFinder && !existingLocationIsDefaultToo)
+                {
+                    found.UseAutomaticFolders = true;
+                    found.UseCustomFolderNameFormat = false;
+                    found.AutomaticFolderRoot = matchingRoot!;
+                    //leave found.UseManualLocations alone to retain any existing manual locations
+                    continue;
+                }
+
+                //we have an existing record that we need to add manual folders to
+
+                if (isInLibraryFolderFileFinder && !found.AutomaticFolderRoot.HasValue())
+                {
+                    //Probably in the library
+                    found.AutomaticFolderRoot = matchingRoot!;
+                }
+
+                found.UseManualLocations = true;
+                if (!found.ManualLocations.Contains(ai.Directory.FullName))
+                {
+                    found.ManualLocations.Add(ai.Directory.FullName);
+                }
             }
 
-            string? matchingRoot = TVSettings.Instance.MovieLibraryFolders.FirstOrDefault(s =>  ai.Directory.FullName.IsSubfolderOf(s));
-            bool isInLibraryFolderFileFinder = matchingRoot.HasValue();
-
-            // see if there is a matching show item
-            MovieConfiguration found = mDoc.FilmLibrary.GetMovie(ai);
-            if (found is null)
-            {
-                AddNewMovieToLibrary(ai, isInLibraryFolderFileFinder, matchingRoot);
-                return;
-            }
-
-            //We are updating an existing record
-
-            string targetDirectoryName = CustomMovieName.NameFor(found, TVSettings.Instance.MovieFolderFormat);
-            bool inDefaultPath = ai.Directory.Name.Equals(
-                targetDirectoryName,
-                StringComparison.CurrentCultureIgnoreCase);
-
-            bool existingLocationIsDefaultToo = found.UseAutomaticFolders && found.AutomaticFolderRoot.In(TVSettings.Instance.MovieLibraryFolders.ToArray());
-
-            if (inDefaultPath && isInLibraryFolderFileFinder && !existingLocationIsDefaultToo)
-            {
-                found.UseAutomaticFolders = true;
-                found.UseCustomFolderNameFormat = false;
-                found.AutomaticFolderRoot = matchingRoot!;
-                //leave found.UseManualLocations alone to retain any existing manual locations
-                return;
-            }
-
-            //we have an existing record that we need to add manual folders to
-
-            if (isInLibraryFolderFileFinder && !found.AutomaticFolderRoot.HasValue())
-            {
-                //Probably in the library
-                found.AutomaticFolderRoot = matchingRoot!;
-            }
-
-            found.UseManualLocations = true;
-            if (!found.ManualLocations.Contains(ai.Directory.FullName))
-            {
-                found.ManualLocations.Add(ai.Directory.FullName);
-            }
+            return movies;
         }
 
-        private void AddNewMovieToLibrary(PossibleNewMovie ai, bool isInLibraryFolderFileFinder, string? matchingRoot)
+        private MovieConfiguration AddNewMovieToLibrary(PossibleNewMovie ai, bool isInLibraryFolderFileFinder, string? matchingRoot)
         {
             // need to add a new showitem
             MovieConfiguration found = new MovieConfiguration(ai);
 
-            mDoc.FilmLibrary.Add(found);
+            mDoc.Add(found.AsList());
 
             mDoc.Stats().AutoAddedMovies++;
 
@@ -282,21 +286,24 @@ namespace TVRename
                 found.UseCustomFolderNameFormat = false;
                 found.AutomaticFolderRoot = matchingRoot!;
                 found.UseManualLocations = false;
-                return;
             }
-
-            if (isInLibraryFolderFileFinder)
+            else
             {
-                found.AutomaticFolderRoot = matchingRoot!;
+                if (isInLibraryFolderFileFinder)
+                {
+                    found.AutomaticFolderRoot = matchingRoot!;
+                }
+
+                found.UseAutomaticFolders = false;
+                found.UseCustomFolderNameFormat = false;
+                found.UseManualLocations = true;
+                found.ManualLocations.Add(ai.Directory.FullName);
             }
 
-            found.UseAutomaticFolders = false;
-            found.UseCustomFolderNameFormat = false;
-            found.UseManualLocations = true;
-            found.ManualLocations.Add(ai.Directory.FullName);
+            return found;
         }
 
-        public void CheckFolders(CancellationToken token,BackgroundWorker bw,  bool detailedLogging, bool showErrorMsgBox)
+        public void CheckFolders(CancellationToken token, BackgroundWorker bw, bool detailedLogging, bool showErrorMsgBox)
         {
             // Check the  folder list, and build up a new "AddItems" list.
             // guessing what the shows actually are isn't done here.  That is done by
@@ -325,14 +332,13 @@ namespace TVRename
                     Logger.Warn($"Not loading {folder} as it is both a movie folder and a tv folder");
                     continue;
                 }
-                CheckFolderForShows(di, token,bw, detailedLogging, showErrorMsgBox);
+                CheckFolderForShows(di, token, bw, detailedLogging, showErrorMsgBox);
 
                 if (token.IsCancellationRequested)
                 {
                     break;
                 }
                 Interlocked.Increment(ref CurrentPhase);
-
             }
         }
     }

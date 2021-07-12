@@ -1,13 +1,13 @@
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
-    public abstract class CachedMediaInfo
+    public abstract class CachedMediaInfo : ISeriesSpecifier
     {
         public string Name;
         public string? Overview;
@@ -33,8 +33,7 @@ namespace TVRename
         public string? Slug;
         public double? Popularity;
         public DateTime? FirstAired;
-        public readonly string? TargetLanguageCode; //The Language Code we'd like the Series in, null if we want to use the system setting
-        public int LanguageId; //The actual language obtained
+        public Locale? ActualLocale; //The actual language obtained
 
         public string? Status { get; set; }
         public bool IsSearchResultOnly; // set to true if local info is known to be just certain fields found from search results. Do not need to be saved
@@ -47,13 +46,23 @@ namespace TVRename
         public bool Dirty; // set to true if local info is known to be older than whats on the server
         public long SrvLastUpdated;
 
-        public string LanguageCodeToUse(TVDoc.ProviderType provider) => UseCustomLanguage && (TargetLanguageCode.HasValue())
-            ? TargetLanguageCode
-            : provider == TVDoc.ProviderType.TMDB ? TVSettings.Instance.TMDBLanguage : TVSettings.Instance.PreferredLanguageCode;
-
         private protected static readonly NLog.Logger LOGGER = NLog.LogManager.GetCurrentClassLogger();
+        protected internal readonly TVDoc.ProviderType Source;
 
-        protected CachedMediaInfo()
+        protected CachedMediaInfo(Locale locale, TVDoc.ProviderType source) : this(source)
+        {
+            ActualLocale = locale;
+        }
+
+        protected CachedMediaInfo(int tvdb, int tvmaze, int tmdbId, Locale locale, TVDoc.ProviderType source) : this(locale, source)
+        {
+            IsSearchResultOnly = false;
+            TvMazeCode = tvmaze;
+            TvdbCode = tvdb;
+            TmdbCode = tmdbId;
+        }
+
+        protected CachedMediaInfo(TVDoc.ProviderType source)
         {
             Actors = new List<Actor>();
             Crew = new List<Crew>();
@@ -68,28 +77,15 @@ namespace TVRename
             TvRageCode = 0;
             TmdbCode = -1;
 
-            LanguageId = -1;
             Status = "Unknown";
+            Source = source;
         }
 
-        protected CachedMediaInfo(int tvdb, int tvmaze, int tmdbId) : this()
-        {
-            IsSearchResultOnly = false;
-            TvMazeCode = tvmaze;
-            TvdbCode = tvdb;
-            TmdbCode = tmdbId;
-        }
-
-        protected CachedMediaInfo(int tvdb, int tvmaze, int tmdbId, string langCode) : this(tvdb, tvmaze, tmdbId)
-        {
-            TargetLanguageCode = langCode;
-        }
-
-        public bool UseCustomLanguage => TargetLanguageCode != null;
         protected abstract MediaConfiguration.MediaType MediaType();
-        public int IdCode(TVDoc.ProviderType source)
+
+        public int IdCode(TVDoc.ProviderType selectedSource)
         {
-            return source switch
+            return selectedSource switch
             {
                 TVDoc.ProviderType.libraryDefault => IdCode(MediaType() == MediaConfiguration.MediaType.movie
                     ? TVSettings.Instance.DefaultMovieProvider
@@ -97,9 +93,33 @@ namespace TVRename
                 TVDoc.ProviderType.TVmaze => TvMazeCode,
                 TVDoc.ProviderType.TheTVDB => TvdbCode,
                 TVDoc.ProviderType.TMDB => TmdbCode,
-                _ => throw new ArgumentOutOfRangeException(nameof(source), source, null)
+                _ => throw new ArgumentOutOfRangeException(nameof(Source), selectedSource, null)
             };
         }
+
+        protected static Locale GetLocale(int? languageId, string? regionCode)
+        {
+            bool validLanguage = languageId.HasValue && Languages.Instance.GetLanguageFromId(languageId.Value) != null;
+            bool validRegion = regionCode.HasValue() && Regions.Instance.RegionFromCode(regionCode!) != null;
+
+            if (validLanguage && validRegion)
+            {
+                return new Locale(Regions.Instance.RegionFromCode(regionCode)!, Languages.Instance.GetLanguageFromId(languageId.Value)!);
+            }
+
+            if (validLanguage)
+            {
+                return new Locale(Languages.Instance.GetLanguageFromId(languageId.Value)!);
+            }
+
+            if (validRegion)
+            {
+                return new Locale(Regions.Instance.RegionFromCode(regionCode)!);
+            }
+
+            return new Locale();
+        }
+
         public IEnumerable<string> GetAliases() => Aliases;
 
         public IEnumerable<Actor> GetActors() => Actors;
@@ -119,10 +139,8 @@ namespace TVRename
 
         public IEnumerable<Crew> GetCrew() => Crew;
 
-
         [NotNull]
         public IEnumerable<string> GetCrewNames() => GetCrew().Select(x => x.Name);
-
 
         public void ClearCrew()
         {
@@ -145,7 +163,7 @@ namespace TVRename
         }
 
         [NotNull]
-        protected string GenerateErrorMessage() => "Error processing data from TheTVDB for a show. " + this + "\r\nLanguage: \"" + LanguageId + "\"";
+        protected string GenerateErrorMessage() => "Error processing data for a show. " + this + "\r\nLanguage: \"" + ActualLocale?.PreferredLanguage?.EnglishName + "\"";
 
         protected void LoadActors([NotNull] XElement seriesXml)
         {
@@ -153,6 +171,15 @@ namespace TVRename
             foreach (Actor a in seriesXml.Descendants("Actors").Descendants("Actor").Select(actorXml => new Actor(actorXml)))
             {
                 AddActor(a);
+            }
+        }
+
+        protected void LoadCrew([NotNull] XElement seriesXml)
+        {
+            ClearCrew();
+            foreach (Crew c in seriesXml.Descendants("Crew").Descendants("CrewMember").Select(crewXml => new Crew(crewXml)))
+            {
+                AddCrew(c);
             }
         }
 
@@ -180,13 +207,16 @@ namespace TVRename
             : Imdb.StartsWith("tt", StringComparison.Ordinal) ? Imdb.RemoveFirst(2)
             : Imdb;
 
-
-        public void AddAlias(string s)
+        public void AddAlias(string? s)
         {
-            Aliases.Add(s);
+            if (s.HasValue())
+            {
+                Aliases.Add(s);
+            }
         }
 
         public override string ToString() => $"TMDB:{TmdbCode}/TVDB:{TvdbCode}/Maze:{TvMazeCode}/{Name}";
+
         public void UpgradeSearchResultToDirty()
         {
             if (IsSearchResultOnly)
@@ -225,6 +255,43 @@ namespace TVRename
             }
 
             return betterLanguage ? newValue.Trim() : encumbant.Trim();
+        }
+
+        TVDoc.ProviderType ISeriesSpecifier.Provider => Source;
+
+        public int TvdbId => TvdbCode;
+
+        string ISeriesSpecifier.Name => Name;
+
+        public MediaConfiguration.MediaType Media => MediaType();
+
+        public int TvMazeId => TvMazeCode;
+
+        public int TmdbId => TmdbCode;
+
+        public string? ImdbCode => Imdb;
+
+        public Locale TargetLocale => ActualLocale ?? new Locale();
+
+        public void UpdateId(int id, TVDoc.ProviderType source)
+        {
+            switch (source)
+            {
+                case TVDoc.ProviderType.TVmaze:
+                    TvMazeCode = id;
+                    break;
+
+                case TVDoc.ProviderType.TheTVDB:
+                    TvdbCode = id;
+                    break;
+
+                case TVDoc.ProviderType.TMDB:
+                    TmdbCode = id;
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(source), source, null);
+            }
         }
     }
 }

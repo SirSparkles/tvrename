@@ -1,10 +1,10 @@
+using Alphaleonis.Win32.Filesystem;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
-using Alphaleonis.Win32.Filesystem;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -15,7 +15,7 @@ namespace TVRename
         [NotNull]
         internal static List<PossibleMergedEpisode> FindDoubleEps(TVDoc doc, [NotNull] BackgroundWorker worker)
         {
-            int total = doc.TvLibrary.Count;
+            int total = doc.TvLibrary.Shows.Count();
             int current = 0;
 
             doc.PreventAutoScan("Find Double Episodes");

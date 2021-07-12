@@ -1,12 +1,12 @@
+using JetBrains.Annotations;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using NLog;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
-using JetBrains.Annotations;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using NLog;
 
 namespace TVRename.TVmaze
 {
@@ -20,18 +20,18 @@ namespace TVRename.TVmaze
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
         [NotNull]
-        public static IEnumerable<KeyValuePair<string,long>> GetUpdates()
+        public static IEnumerable<KeyValuePair<string, long>> GetUpdates()
         {
             try
             {
                 JObject updatesJson = HttpHelper.HttpGetRequestWithRetry(APIRoot + "/updates/shows", 3, 2);
 
                 return updatesJson.Children<JProperty>()
-                    .Select(t => new KeyValuePair<string, long>(t.Name, (long) t.Value));
+                    .Select(t => new KeyValuePair<string, long>(t.Name, (long)t.Value));
             }
             catch (WebException ex)
             {
-                Logger.LogWebException("Could not get updates from TV Maze due to",ex);
+                Logger.LogWebException("Could not get updates from TV Maze due to", ex);
                 throw new SourceConnectivityException(ex.Message);
             }
             catch (System.IO.IOException iex)
@@ -59,38 +59,43 @@ namespace TVRename.TVmaze
                 Logger.LogWebException($"Could not search for show '{searchText}' from TV Maze due to", wex);
                 throw new SourceConnectivityException($"Can't search TVmaze  for {searchText} {wex.Message}");
             }
-            
+
             return response.Children().Select(ConvertSearchResult);
         }
 
-        private static CachedSeriesInfo ConvertSearchResult(JToken token)
+        private static CachedSeriesInfo? ConvertSearchResult(JToken token)
         {
             double score = token["score"].Value<double>();
             JObject show = token["show"].Value<JObject>();
+            if (show is null)
+            {
+                return null;
+            }
             CachedSeriesInfo downloadedSi = GenerateSeriesInfo(show);
             downloadedSi.Popularity = score;
             downloadedSi.IsSearchResultOnly = true;
             return downloadedSi;
         }
 
-        private static int GetSeriesIdFromOtherCodes(int siTvdbCode,string? imdb)
+        private static void GetSeriesIdFromOtherCodes(ISeriesSpecifier source)
         {
             try
             {
-                JObject r = HttpHelper.HttpGetRequestWithRetry(APIRoot + "/lookup/shows?thetvdb=" + siTvdbCode, 3,2);
-                int tvMazeId = (int) r["id"];
-                return tvMazeId;
+                JObject r = HttpHelper.HttpGetRequestWithRetry(APIRoot + "/lookup/shows?thetvdb=" + source.TvdbId, 3, 2);
+                int tvMazeId = (int)r["id"];
+
+                source.UpdateId(tvMazeId, TVDoc.ProviderType.TVmaze);
             }
             catch (WebException wex)
             {
                 if (wex.Is404())
                 {
-                    string tvdBimbd = TheTVDB.LocalCache.Instance.GetSeries(siTvdbCode)?.Imdb;
-                    if (!imdb.HasValue() && !tvdBimbd.HasValue())
+                    string tvdBimbd = TheTVDB.LocalCache.Instance.GetSeries(source.TvdbId)?.Imdb;
+                    if (!source.ImdbCode.HasValue() && !tvdBimbd.HasValue())
                     {
-                        throw new MediaNotFoundException(siTvdbCode, $"Cant find a show with TVDB Id {siTvdbCode} on TV Maze, either add the show to TV Maze, find the show and update The TVDB Id or use TVDB for that show.", TVDoc.ProviderType.TheTVDB, TVDoc.ProviderType.TVmaze);
+                        throw new MediaNotFoundException(source, $"Cant find a show with TVDB Id {source.TvdbId} on TV Maze, either add the show to TV Maze, find the show and update The TVDB Id or use TVDB for that show.", TVDoc.ProviderType.TheTVDB, TVDoc.ProviderType.TVmaze, MediaConfiguration.MediaType.tv);
                     }
-                    string imdbCode = imdb ?? tvdBimbd;
+                    string imdbCode = source.ImdbCode ?? tvdBimbd;
                     try
                     {
                         JObject r = HttpHelper.HttpGetRequestWithRetry(APIRoot + "/lookup/shows?imdb=" + imdbCode, 3, 2);
@@ -98,37 +103,21 @@ namespace TVRename.TVmaze
                         JToken externalsToken = GetChild(r, "externals");
                         JToken tvdbToken = GetChild(externalsToken, "thetvdb");
                         int tvdb = tvdbToken.Type == JTokenType.Null ? -1 : (int)tvdbToken;
-                        Logger.Error($"TVMaze Data issue: {tvMazeId} has the wrong TVDB Id based on {imdbCode}. Should be {siTvdbCode}, currently is {tvdb}.");
-                        return tvMazeId;
+                        Logger.Error($"TVMaze Data issue: {tvMazeId} has the wrong TVDB Id based on {imdbCode}. Should be {source}, currently is {tvdb}.");
+
+                        source.UpdateId(tvMazeId, TVDoc.ProviderType.TVmaze);
+                        return;
                     }
                     catch (WebException wex2)
                     {
                         if (wex2.Is404() && TvMazeIsUp())
                         {
-                            throw new MediaNotFoundException(siTvdbCode,$"Please add show with imdb={imdbCode} and tvdb={siTvdbCode} to tvMaze, or use TVDB as the source for that show.", TVDoc.ProviderType.TheTVDB, TVDoc.ProviderType.TVmaze);
+                            throw new MediaNotFoundException(source, $"Please add show with imdb={imdbCode} and tvdb={source.TvdbId} to tvMaze, or use TVDB as the source for that show.", TVDoc.ProviderType.TheTVDB, TVDoc.ProviderType.TVmaze, MediaConfiguration.MediaType.tv);
                         }
-                        throw new SourceConnectivityException($"Can't find TVmaze cachedSeries for IMDB={imdbCode} and tvdb={siTvdbCode} {wex.Message}");
+                        throw new SourceConnectivityException($"Can't find TVmaze cachedSeries for IMDB={imdbCode} and tvdb={source.TvdbId} {wex.Message}");
                     }
                 }
-                throw new SourceConnectivityException($"Can't find TVmaze cachedSeries for {siTvdbCode} {wex.Message}");
-            }
-        }
-
-        private static JObject GetSeriesDetails(int tvMazeId)
-        {
-            try
-            {
-                return HttpHelper.HttpGetRequestWithRetry($"{APIRoot}/shows/{tvMazeId}?specials=1&embed[]=cast&embed[]=episodes&embed[]=crew&embed[]=akas&embed[]=seasons&embed[]=images", 5,2);
-            }
-            catch (WebException wex)
-            {
-                if (wex.Is404() && TvMazeIsUp())
-                {
-                    throw new MediaNotFoundException(tvMazeId,$"Please add show maze id {tvMazeId} to tvMaze", TVDoc.ProviderType.TVmaze, TVDoc.ProviderType.TVmaze);
-                }
-
-                Logger.LogWebException($"Could not get show with id {tvMazeId} from TV Maze due to",wex);
-                throw new SourceConnectivityException($"Can't find TVmaze cachedSeries for {tvMazeId} {wex.Message}");
+                throw new SourceConnectivityException($"Can't find TVmaze cachedSeries for {source} {wex.Message}");
             }
         }
 
@@ -144,63 +133,81 @@ namespace TVRename.TVmaze
             }
         }
 
-        [NotNull]
-        public static CachedSeriesInfo GetSeriesDetails([NotNull] SeriesSpecifier ss)
+        private static JObject GetSeriesDetailsWithMazeId(ISeriesSpecifier tvMazeId)
         {
+            try
+            {
+                return HttpHelper.HttpGetRequestWithRetry($"{APIRoot}/shows/{tvMazeId.TvMazeId}?specials=1&embed[]=cast&embed[]=episodes&embed[]=crew&embed[]=akas&embed[]=seasons&embed[]=images", 5, 2);
+            }
+            catch (WebException wex)
+            {
+                if (wex.Is404() && TvMazeIsUp())
+                {
+                    throw new MediaNotFoundException(tvMazeId, $"Please add show maze id {tvMazeId} to tvMaze", TVDoc.ProviderType.TVmaze, TVDoc.ProviderType.TVmaze, MediaConfiguration.MediaType.tv);
+                }
 
-            JObject results =  ss.TvMazeSeriesId > 0
-                ? GetSeriesDetails(ss.TvMazeSeriesId)
-                : GetSeriesDetails(GetSeriesIdFromOtherCodes(ss.TvdbSeriesId,ss.ImdbCode));
+                Logger.LogWebException($"Could not get show with id {tvMazeId.TvMazeId} from TV Maze due to", wex);
+                throw new SourceConnectivityException($"Can't find TVmaze cachedSeries for {tvMazeId.TvMazeId} {wex.Message}");
+            }
+        }
+
+        [NotNull]
+        public static CachedSeriesInfo GetSeriesDetails([NotNull] ISeriesSpecifier ss)
+        {
+            if (ss.TvMazeId <= 0)
+            {
+                GetSeriesIdFromOtherCodes(ss);
+            }
+            JObject results = GetSeriesDetailsWithMazeId(ss);
 
             CachedSeriesInfo downloadedSi = GenerateSeriesInfo(results);
-            JToken jToken = GetChild(results,"_embedded");
+            JToken jToken = GetChild(results, "_embedded");
 
-            foreach (string name in GetChild(jToken,"akas").Select(akaJson => (string)akaJson["name"]).Where(name => name != null))
+            foreach (string name in GetChild(jToken, "akas").Select(akaJson => (string)akaJson["name"]).Where(name => name != null))
             {
                 downloadedSi.AddAlias(name);
             }
 
-            List<string> writers = GetWriters(GetChild(jToken,"crew"));
-            List<string> directors = GetDirectors(GetChild(jToken,"crew"));
-            foreach (JToken epJson in GetChild(jToken,"episodes"))
+            List<string> writers = GetWriters(GetChild(jToken, "crew"));
+            List<string> directors = GetDirectors(GetChild(jToken, "crew"));
+            foreach (JToken epJson in GetChild(jToken, "episodes"))
             {
-                downloadedSi.AddEpisode(GenerateEpisode(ss.TvMazeSeriesId,writers,directors, (JObject)epJson,downloadedSi));
+                downloadedSi.AddEpisode(GenerateEpisode(ss.TvMazeId, writers, directors, (JObject)epJson, downloadedSi));
             }
 
             foreach (JToken jsonSeason in GetChild(jToken, "seasons"))
             {
-                downloadedSi.AddSeason(GenerateSeason(ss.TvMazeSeriesId, jsonSeason));
+                downloadedSi.AddSeason(GenerateSeason(ss.TvMazeId, jsonSeason));
 
                 JToken imageNode = GetChild(jsonSeason, "image");
                 if (imageNode.HasValues)
                 {
-                    string child = (string)GetChild(imageNode,"original");
+                    string child = (string)GetChild(imageNode, "original");
                     if (child != null)
                     {
-                        downloadedSi.AddOrUpdateBanner(GenerateBanner(ss.TvMazeSeriesId, (int) jsonSeason["number"], child));
+                        downloadedSi.AddOrUpdateImage(GenerateImage(ss.TvMazeId, (int)jsonSeason["number"], child));
                     }
                 }
             }
 
-            foreach (JToken imageJson in GetChild(jToken, "images").Where(imageJson => (string)imageJson["type"] == "background"))
+            foreach (JToken imageJson in GetChild(jToken, "images"))
             {
-                downloadedSi.AddOrUpdateBanner(GenerateBanner(ss.TvMazeSeriesId, imageJson));
+                downloadedSi.AddOrUpdateImage(GenerateImage(ss.TvMazeId, imageJson));
             }
-            downloadedSi.BannersLoaded = true;
 
             downloadedSi.ClearActors();
-            foreach (JToken jsonActor in GetChild(jToken,"cast"))
+            foreach (JToken jsonActor in GetChild(jToken, "cast"))
             {
-                downloadedSi.AddActor(GenerateActor(ss.TvMazeSeriesId, jsonActor));
+                downloadedSi.AddActor(GenerateActor(ss.TvMazeId, jsonActor));
             }
-            
+
             return downloadedSi;
         }
 
         [NotNull]
         private static List<string> GetWriters(JToken crew)
         {
-            return ((JArray) crew).Children<JToken>()
+            return ((JArray)crew).Children<JToken>()
                 .Where(token =>
                 {
                     JToken typeToken = GetChild(token, "type");
@@ -212,13 +219,14 @@ namespace TVRename.TVmaze
                     return (string)personTokenToken["name"];
                 }).ToList();
         }
+
         [NotNull]
         private static List<string> GetDirectors(JToken crew)
         {
             return ((JArray)crew).Children<JToken>()
                 .Where(token =>
                 {
-                    JToken typeToken = GetChild(token,"type");
+                    JToken typeToken = GetChild(token, "type");
                     return typeToken.ToString().EndsWith("Director", StringComparison.InvariantCultureIgnoreCase);
                 })
                 .Select(token =>
@@ -229,30 +237,44 @@ namespace TVRename.TVmaze
         }
 
         [NotNull]
-        private static Banner GenerateBanner(int seriesId, [NotNull] JToken imageJson)
+        private static ShowImage GenerateImage(int seriesId, [NotNull] JToken imageJson)
         {
-            Banner newBanner = new Banner(seriesId)
+            ShowImage newBanner = new ShowImage
             {
-                BannerPath = (string) GetChild(GetChild(GetChild(imageJson,"resolutions"),"original"),"url"),
-                BannerId = (int) imageJson["id"],
-                BannerType = "fanart",
-                Rating = (bool) imageJson["main"] ? 10 : 1,
-                RatingCount = 1
+                SeriesId = seriesId,
+                ImageUrl = (string)GetChild(GetChild(GetChild(imageJson, "resolutions"), "original"), "url"),
+                Id = (int)imageJson["id"],
+                ImageStyle = MapImageType((string)imageJson["type"]),
+                Rating = (bool)imageJson["main"] ? 10 : 1,
+                RatingCount = 1,
+                SeriesSource = TVDoc.ProviderType.TVmaze,
             };
 
             return newBanner;
         }
 
-        [NotNull]
-        private static Banner GenerateBanner(int seriesId, int seasonNumber,[NotNull] string url)
+        private static MediaImage.ImageType MapImageType(string? s)
         {
-            Banner newBanner = new Banner(seriesId)
+            if (s is null) return MediaImage.ImageType.background;
+            if (s == "background") return MediaImage.ImageType.background;
+            if (s == "poster") return MediaImage.ImageType.poster;
+            if (s == "banner") return MediaImage.ImageType.wideBanner;
+            return MediaImage.ImageType.background;
+        }
+
+        [NotNull]
+        private static ShowImage GenerateImage(int seriesId, int seasonNumber, [NotNull] string url)
+        {
+            ShowImage newBanner = new ShowImage
             {
-                BannerPath = url,
-                BannerType = "season",
+                SeriesId = seriesId,
+                ImageUrl = url,
+                ImageStyle = MediaImage.ImageType.poster,
+                Subject = MediaImage.ImageSubject.season,
                 SeasonId = seasonNumber,
                 Rating = 10,
-                RatingCount = 1
+                RatingCount = 1,
+                SeriesSource = TVDoc.ProviderType.TVmaze,
             };
 
             return newBanner;
@@ -261,14 +283,14 @@ namespace TVRename.TVmaze
         [NotNull]
         private static Actor GenerateActor(int seriesId, [NotNull] JToken jsonActor)
         {
-            JToken personToken = GetChild(jsonActor,"person");
-            JToken actorImageNode = GetChild(personToken,"image");
-            int actorId = (int) personToken["id"];
-            string? actorImage = actorImageNode.HasValues ? (string) actorImageNode["medium"] : null;
-            string actorName = (string) personToken["name"] ?? throw new SourceConsistencyException("No Actor Name",TVDoc.ProviderType.TVmaze);
-            string actorRole = (string) GetChild(GetChild(jsonActor,"character"),"name");
-            int actorSortOrder = (int) personToken["id"];
-            return new Actor(actorId, actorImage, actorName, actorRole, seriesId,actorSortOrder);
+            JToken personToken = GetChild(jsonActor, "person");
+            JToken actorImageNode = GetChild(personToken, "image");
+            int actorId = (int)personToken["id"];
+            string? actorImage = actorImageNode.HasValues ? (string)actorImageNode["medium"] : null;
+            string actorName = (string)personToken["name"] ?? throw new SourceConsistencyException("No Actor Name", TVDoc.ProviderType.TVmaze);
+            string actorRole = (string)GetChild(GetChild(jsonActor, "character"), "name");
+            int actorSortOrder = (int)personToken["id"];
+            return new Actor(actorId, actorImage, actorName, actorRole, seriesId, actorSortOrder);
         }
 
         [NotNull]
@@ -276,12 +298,12 @@ namespace TVRename.TVmaze
         {
             int id = (int)json["id"];
             int number = (int)json["number"];
-            string url = (string) json["url"];
+            string url = (string)json["url"];
             string name = (string)json["name"];
             string description = (string)json["summary"];
-            JToken imageNode = GetChild(json,"image");
-            string imageUrl = imageNode.HasValues ? (string)imageNode["original"] : null; 
-            return new Season(id,number,name,StripPTags(description??string.Empty),url,imageUrl,seriesId);
+            JToken imageNode = GetChild(json, "image");
+            string imageUrl = imageNode.HasValues ? (string)imageNode["original"] : null;
+            return new Season(id, number, name, StripPTags(description ?? string.Empty), url, imageUrl, seriesId);
         }
 
         [NotNull]
@@ -297,11 +319,11 @@ namespace TVRename.TVmaze
 
             if (r.ContainsKey("genres"))
             {
-                returnValue.Genres = r["genres"]?.Select(x => x.Value<string>().Trim()).Distinct().ToList() ?? new List<string>();
+                returnValue.Genres = r["genres"]?.Select(x => x.Value<string>()?.Trim()).Distinct().ToList() ?? new List<string>();
             }
 
-            List<string> typesToTransferToGenres = new List<string>{"Animation","Reality","Documentary","News","Sports"};
-            foreach (string conversionType in typesToTransferToGenres.Where(s => s==returnValue.Type))
+            List<string> typesToTransferToGenres = new List<string> { "Animation", "Reality", "Documentary", "News", "Sports" };
+            foreach (string conversionType in typesToTransferToGenres.Where(s => s == returnValue.Type))
             {
                 returnValue.Genres.Add(conversionType);
             }
@@ -312,7 +334,7 @@ namespace TVRename.TVmaze
                 returnValue.Name = System.Web.HttpUtility.HtmlDecode(s1).Trim();
             }
 
-            string siteRatingString = ((string)GetChild(r,"rating")["average"])?.Trim();
+            string siteRatingString = ((string)GetChild(r, "rating")["average"])?.Trim();
             float.TryParse(siteRatingString, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.CreateSpecificCulture("en-US"), out float parsedSiteRating);
             returnValue.SiteRating = parsedSiteRating;
 
@@ -330,30 +352,30 @@ namespace TVRename.TVmaze
             string wc = GetKeySubKey(r, "webChannel", "name");
             string days = GetChild(r, "schedule")["days"]?.Select(x => x.Value<string>()).ToCsv();
             JToken externalsToken = GetChild(r, "externals");
-            int tvdb = GetChild(externalsToken, "thetvdb").Type == JTokenType.Null ? -1 : (int) externalsToken["thetvdb"];
-            int rage = GetChild(externalsToken, "tvrage").Type == JTokenType.Null ? -1 : (int) externalsToken["tvrage"];
+            int tvdb = GetChild(externalsToken, "thetvdb").Type == JTokenType.Null ? -1 : (int)externalsToken["thetvdb"];
+            int rage = GetChild(externalsToken, "tvrage").Type == JTokenType.Null ? -1 : (int)externalsToken["tvrage"];
 
-            return new CachedSeriesInfo
+            return new CachedSeriesInfo(new Locale(), TVDoc.ProviderType.TVmaze)
             {
                 IsSearchResultOnly = false,
                 AirsDay = days,
-                AirsTime = JsonHelper.ParseAirTime((string) GetChild(r, "schedule")["time"]),
-                FirstAired = JsonHelper.ParseFirstAired((string) r["premiered"]),
+                AirsTime = JsonHelper.ParseAirTime((string)GetChild(r, "schedule")["time"]),
+                FirstAired = JsonHelper.ParseFirstAired((string)r["premiered"]),
                 TvdbCode = tvdb,
-                TvMazeCode = (int) (r["id"] ?? 0),
+                TvMazeCode = (int)(r["id"] ?? 0),
                 TvRageCode = rage,
-                Imdb = (string) externalsToken["imdb"],
+                Imdb = (string)externalsToken["imdb"],
                 Network = nw ?? wc,
-                WebUrl = ((string) r["url"])?.Trim(),
+                WebUrl = ((string)r["url"])?.Trim(),
                 PosterUrl = GetUrl(r, "original"),
-                OfficialUrl = (string) r["officialSite"],
-                ShowLanguage = (string) r["language"],
-                Overview = System.Web.HttpUtility.HtmlDecode((string) r["summary"])?.Trim(),
-                Runtime = ((string) r["runtime"])?.Trim(),
-                Status = MapStatus((string) r["status"] ?? throw new SourceConsistencyException("No Status", TVDoc.ProviderType.TVmaze)),
-                Type = (string) r["type"],
+                OfficialUrl = (string)r["officialSite"],
+                ShowLanguage = (string)r["language"],
+                Overview = System.Web.HttpUtility.HtmlDecode((string)r["summary"])?.Trim(),
+                Runtime = ((string)r["runtime"])?.Trim(),
+                Status = MapStatus((string)r["status"] ?? throw new SourceConsistencyException("No Status", TVDoc.ProviderType.TVmaze)),
+                Type = (string)r["type"],
                 SrvLastUpdated =
-                    long.TryParse((string) r["updated"], out long updateTime)
+                    long.TryParse((string)r["updated"], out long updateTime)
                         ? updateTime
                         : 0,
                 Dirty = false,
@@ -372,15 +394,18 @@ namespace TVRename.TVmaze
             {
                 case null:
                     return null;
+
                 case JArray array:
                     if (array.First != null)
                     {
-                        return (string) array.First[firstSubKey];
+                        return (string)array.First[firstSubKey];
                     }
 
                     return null;
+
                 case JObject o:
                     return (string)o[firstSubKey];
+
                 default:
                     return null;
             }
@@ -397,31 +422,31 @@ namespace TVRename.TVmaze
         }
 
         [NotNull]
-        private static Episode GenerateEpisode(int seriesId, [NotNull] List<string> writers, [NotNull] List<string> directors, [NotNull] JObject r,CachedSeriesInfo si)
+        private static Episode GenerateEpisode(int seriesId, [NotNull] List<string> writers, [NotNull] List<string> directors, [NotNull] JObject r, CachedSeriesInfo si)
         {
             //Something like {
-                //"id":1,
-                //"url":"http://www.tvmaze.com/episodes/1/under-the-dome-1x01-pilot",
-                //"name":"Pilot",
-                //"season":1,
-                //"number":1,
-                //"airdate":"2013-06-24",
-                //"airtime":"22:00",
-                //"airstamp":"2013-06-25T02:00:00+00:00",
-                //"runtime":60,
-                //"image":{
-                    //"medium":"http://static.tvmaze.com/uploads/images/medium_landscape/1/4388.jpg",
-                    //"original":"http://static.tvmaze.com/uploads/images/original_untouched/1/4388.jpg"},
-                //"summary":"<p>When the residents of Chester's Mill find themselves trapped under a massive transparent dome with no way out, they struggle to survive as resources rapidly dwindle and panic quickly escalates.</p>",
-                //"_links":{"self":{"href":"http://api.tvmaze.com/episodes/1"}}}
+            //"id":1,
+            //"url":"http://www.tvmaze.com/episodes/1/under-the-dome-1x01-pilot",
+            //"name":"Pilot",
+            //"season":1,
+            //"number":1,
+            //"airdate":"2013-06-24",
+            //"airtime":"22:00",
+            //"airstamp":"2013-06-25T02:00:00+00:00",
+            //"runtime":60,
+            //"image":{
+            //"medium":"http://static.tvmaze.com/uploads/images/medium_landscape/1/4388.jpg",
+            //"original":"http://static.tvmaze.com/uploads/images/original_untouched/1/4388.jpg"},
+            //"summary":"<p>When the residents of Chester's Mill find themselves trapped under a massive transparent dome with no way out, they struggle to survive as resources rapidly dwindle and panic quickly escalates.</p>",
+            //"_links":{"self":{"href":"http://api.tvmaze.com/episodes/1"}}}
 
-                JToken airstampToken = GetChild(r, "airstamp");
+            JToken airstampToken = GetChild(r, "airstamp");
 
-            Episode newEp =  new Episode(seriesId,si)
+            Episode newEp = new Episode(seriesId, si)
             {
-                FirstAired = ((string)r["airdate"]).HasValue()? (DateTime?)r["airdate"]:null,
+                FirstAired = ((string)r["airdate"]).HasValue() ? (DateTime?)r["airdate"] : null,
                 AirTime = JsonHelper.ParseAirTime((string)r["airtime"]),
-                AirStamp = airstampToken.HasValues? (DateTime?)airstampToken : null,
+                AirStamp = airstampToken.HasValues ? (DateTime?)airstampToken : null,
                 EpisodeId = (int)r["id"],
                 LinkUrl = ((string)r["url"])?.Trim(),
                 Overview = System.Web.HttpUtility.HtmlDecode((string)r["summary"])?.Trim(),
@@ -453,7 +478,7 @@ namespace TVRename.TVmaze
             return token;
         }
 
-        private static string? GetUrl([NotNull] JObject r,string typeKey)
+        private static string? GetUrl([NotNull] JObject r, string typeKey)
         {
             JToken x = r["image"];
             if (x is null)

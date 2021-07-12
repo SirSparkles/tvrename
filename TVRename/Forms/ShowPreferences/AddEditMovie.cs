@@ -1,17 +1,17 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -27,17 +27,17 @@ namespace TVRename
     public partial class AddEditMovie : Form
     {
         private readonly MovieConfiguration selectedShow;
-        private readonly CombinedCodeFinder codeFinderForm;
+        private readonly CodeFinder codeFinderForm;
         private CustomNameTagsFloatingWindow? cntfw;
-        private readonly bool addingNewShow;
+        internal bool HasChanged;
         private readonly TVDoc mDoc;
 
         public AddEditMovie([NotNull] MovieConfiguration si, TVDoc doc)
         {
             selectedShow = si;
             mDoc = doc;
-            addingNewShow = si.TvdbCode == -1;
             InitializeComponent();
+            HasChanged = false;
 
             SetupDropDowns(si);
 
@@ -48,7 +48,7 @@ namespace TVRename
             lblSeasonWordPreview.ForeColor = Color.DarkGray;
 
             codeFinderForm =
-                new CombinedCodeFinder(si.TmdbCode != -1 ? si.TmdbCode.ToString() : "",MediaConfiguration.MediaType.movie,si.Provider) {Dock = DockStyle.Fill};
+                new MovieCodeFinder(si.Code != -1 ? si.Code.ToString() : si.LastName, si.Provider) { Dock = DockStyle.Fill };
 
             codeFinderForm.SelectionChanged += MTCCF_SelectionChanged;
 
@@ -69,6 +69,7 @@ namespace TVRename
             UpdateCustomShowNameEnabled();
 
             SetupLanguages(si);
+            SetupRegions(si);
 
             cbDoRenaming.Checked = si.DoRename;
             cbDoMissingCheck.Checked = si.DoMissingCheck;
@@ -160,16 +161,32 @@ namespace TVRename
             chkCustomLanguage.Checked = si.UseCustomLanguage;
             if (chkCustomLanguage.Checked)
             {
-                Language languageFromCode =
-                    TheTVDB.LocalCache.Instance.LanguageList?.GetLanguageFromCode(si.CustomLanguageCode);
+                Language languageFromCode = Languages.Instance.GetLanguageFromCode(si.CustomLanguageCode);
 
                 if (languageFromCode != null)
                 {
-                    cbLanguage.Text = languageFromCode.Name;
+                    cbLanguage.Text = languageFromCode.LocalName;
                 }
             }
 
             cbLanguage.Enabled = chkCustomLanguage.Checked;
+        }
+
+        private void SetupRegions([NotNull] MovieConfiguration si)
+        {
+            chkCustomRegion.Checked = si.UseCustomRegion;
+            if (chkCustomRegion.Checked)
+            {
+                Region? r = si.CustomRegionCode.HasValue() ?
+                    Regions.Instance.RegionFromCode(si.CustomRegionCode!) : Regions.Instance.FallbackRegion;
+
+                if (r != null)
+                {
+                    cbRegion.Text = r.EnglishName;
+                }
+            }
+
+            cbRegion.Enabled = chkCustomRegion.Checked;
         }
 
         private void SetProvider([NotNull] MovieConfiguration si)
@@ -196,23 +213,38 @@ namespace TVRename
 
         private void SetupDropDowns([NotNull] MovieConfiguration si)
         {
-            if (TheTVDB.LocalCache.Instance.LanguageList != null) //This means that language shave been loaded
+            string pref = string.Empty;
+            cbLanguage.BeginUpdate();
+            cbLanguage.Items.Clear();
+            foreach (Language l in Languages.Instance)
             {
-                string pref = string.Empty;
-                cbLanguage.BeginUpdate();
-                cbLanguage.Items.Clear();
-                foreach (Language l in TheTVDB.LocalCache.Instance.LanguageList)
-                {
-                    cbLanguage.Items.Add(l.Name);
+                cbLanguage.Items.Add(l.LocalName);
 
-                    if (si.CustomLanguageCode == l.Abbreviation)
+                if (si.CustomLanguageCode == l.Abbreviation)
+                {
+                    pref = l.LocalName;
+                }
+            }
+            cbLanguage.EndUpdate();
+            cbLanguage.Text = pref;
+
+            string rpref = string.Empty;
+            cbRegion.BeginUpdate();
+            cbRegion.Items.Clear();
+            foreach (Region r in Regions.Instance)
+            {
+                if (r.EnglishName.HasValue())
+                {
+                    cbRegion.Items.Add(r.EnglishName!);
+
+                    if (si.CustomRegionCode == r.Abbreviation)
                     {
-                        pref = l.Name;
+                        rpref = r.EnglishName;
                     }
                 }
-                cbLanguage.EndUpdate();
-                cbLanguage.Text = pref;
             }
+            cbRegion.EndUpdate();
+            cbRegion.Text = rpref;
         }
 
         private void buttonOK_Click(object sender, EventArgs e)
@@ -227,15 +259,17 @@ namespace TVRename
             DialogResult = DialogResult.OK;
             Close();
         }
+
         private TVDoc.ProviderType GetProviderTypeInUse()
         {
             if (GetProviderType() == TVDoc.ProviderType.libraryDefault)
             {
-                return TVSettings.Instance.DefaultProvider;
+                return TVSettings.Instance.DefaultMovieProvider;
             }
 
             return GetProviderType();
         }
+
         private bool OkToClose()
         {
             if (!TVDoc.GetMediaCache(GetProviderTypeInUse()).HasMovie(codeFinderForm.SelectedCode()))
@@ -251,7 +285,21 @@ namespace TVRename
             {
                 MessageBox.Show("Please enter language for the show or accept the default preferred language", "TVRename Add/Edit Movie",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                
+
+                return false;
+            }
+            if (chkCustomRegion.Checked && string.IsNullOrWhiteSpace(cbRegion.SelectedItem?.ToString()))
+            {
+                MessageBox.Show("Please enter region for the show or accept the default region", "TVRename Add/Edit Movie",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                return false;
+            }
+            if (chkCustomShowName.Checked && string.IsNullOrWhiteSpace(txtCustomShowName.Text))
+            {
+                MessageBox.Show("Please enter custom for the show or remove custom naming", "TVRename Add/Edit Movie",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
                 return false;
             }
             if (chkAutoFolders.Checked && string.IsNullOrWhiteSpace(cbDirectory.SelectedItem?.ToString()))
@@ -294,8 +342,11 @@ namespace TVRename
         #region HelpWindows
 
         private void pbBasics_Click(object sender, EventArgs e) => OpenInfoWindow("/#the-basics-tab");
+
         private void pbAdvanced_Click(object sender, EventArgs e) => OpenInfoWindow("/#the-advanced-tab");
+
         private void pbAliases_Click(object sender, EventArgs e) => OpenInfoWindow("/#the-show-aliases-tab");
+
         private void pbFolders_Click(object sender, EventArgs e) => OpenInfoWindow("/#the-folders-tab");
 
         private static void OpenInfoWindow(string page)
@@ -303,7 +354,7 @@ namespace TVRename
             Helpers.OpenUrl($"https://www.tvrename.com/manual/user{page}");
         }
 
-        #endregion
+        #endregion HelpWindows
 
         private void SetShow()
         {
@@ -314,8 +365,7 @@ namespace TVRename
             selectedShow.UseCustomLanguage = chkCustomLanguage.Checked;
             if (selectedShow.UseCustomLanguage)
             {
-                selectedShow.CustomLanguageCode = TheTVDB.LocalCache.Instance.LanguageList?.GetLanguageFromLocalName(cbLanguage.SelectedItem?.ToString())?.Abbreviation
-                                                  ??TVSettings.Instance.PreferredLanguageCode;
+                selectedShow.CustomLanguageCode = (Languages.Instance.GetLanguageFromLocalName(cbLanguage.SelectedItem?.ToString()) ?? TVSettings.Instance.PreferredTVDBLanguage).Abbreviation;
             }
 
             selectedShow.UseCustomRegion = chkCustomRegion.Checked;
@@ -426,7 +476,7 @@ namespace TVRename
 
         private void tbShowAlias_TextChanged(object sender, EventArgs e)
         {
-          bnAddAlias.Enabled = tbShowAlias.Text.Length > 0;
+            bnAddAlias.Enabled = tbShowAlias.Text.Length > 0;
         }
 
         private void lbShowAlias_SelectedIndexChanged(object sender, EventArgs e)
@@ -436,25 +486,22 @@ namespace TVRename
 
         private void bnTags_Click(object sender, EventArgs e)
         {
-                cntfw = new CustomNameTagsFloatingWindow(selectedShow);
-                cntfw.Show(this);
-                Focus();
+            cntfw = new CustomNameTagsFloatingWindow(selectedShow);
+            cntfw.Show(this);
+            Focus();
         }
 
         private void chkCustomLanguage_CheckedChanged(object sender, EventArgs e)
         {
+            HasChanged = true;
             cbLanguage.Enabled = chkCustomLanguage.Checked;
         }
 
         private void MTCCF_SelectionChanged(object sender, EventArgs e)
         {
-            if (addingNewShow && TVSettings.Instance.DefShowAutoFolders && TVSettings.Instance.DefShowUseDefLocation)
-            {
-                // txtBaseFolder.Text =
-                //     TVSettings.Instance.DefShowLocation.EnsureEndsWithSeparator()
-                //     + TVSettings.Instance.FilenameFriendly(FileHelper.MakeValidPath(codeFinderForm.SelectedShow()?.Name));
-            }
+            HasChanged = true;
         }
+
         private void bnBrowseFolder_Click_1(object sender, EventArgs e)
         {
             folderBrowser.ShowNewFolderButton = true;
@@ -477,7 +524,7 @@ namespace TVRename
 
         private void bnAdd_Click_1(object sender, EventArgs e)
         {
-            ListViewItem lvi = new ListViewItem { Text =txtFolder.Text};
+            ListViewItem lvi = new ListViewItem { Text = txtFolder.Text };
 
             lvManualFolders.Items.Add(lvi);
 
@@ -556,7 +603,24 @@ namespace TVRename
 
         private void rdoProvider_CheckedChanged(object sender, EventArgs e)
         {
-            codeFinderForm.SetSource(GetProviderType(),selectedShow);
+            HasChanged = true;
+            codeFinderForm.SetSource(GetProviderType(), selectedShow);
+        }
+
+        private void chkCustomRegion_CheckedChanged(object sender, EventArgs e)
+        {
+            HasChanged = true;
+            cbRegion.Enabled = chkCustomRegion.Checked;
+        }
+
+        private void cbLanguage_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            HasChanged = true;
+        }
+
+        private void cbRegion_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            HasChanged = true;
         }
     }
 }

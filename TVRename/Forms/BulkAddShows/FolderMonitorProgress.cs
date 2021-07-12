@@ -1,10 +1,10 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 using System.Windows.Forms;
 
 namespace TVRename
@@ -12,9 +12,9 @@ namespace TVRename
     public partial class FolderMonitorProgress : Form
     {
         public bool Ready;
-        private readonly FolderMonitor mainForm;
+        private readonly BulkAddShow mainForm;
 
-        public FolderMonitorProgress(FolderMonitor thefm)
+        public FolderMonitorProgress(BulkAddShow thefm)
         {
             mainForm = thefm;
             InitializeComponent();

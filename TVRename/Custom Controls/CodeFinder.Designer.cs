@@ -9,7 +9,7 @@
 
 namespace TVRename
 {
-    partial class CombinedCodeFinder
+    partial class CodeFinder
     {
         /// <summary>
         /// Required designer variable.
@@ -151,7 +151,7 @@ namespace TVRename
             this.Controls.Add(this.txtFindThis);
             this.Controls.Add(this.lvMatches);
             this.Controls.Add(this.label3);
-            this.Name = "CombinedCodeFinder";
+            this.Name = "CodeFinder";
             this.Size = new System.Drawing.Size(403, 170);
             this.ResumeLayout(false);
             this.PerformLayout();
@@ -162,7 +162,7 @@ namespace TVRename
 
         private System.Windows.Forms.ColumnHeader columnHeader3;
 
-        private System.Windows.Forms.Label txtSearchStatus;
+        protected System.Windows.Forms.Label txtSearchStatus;
         private System.Windows.Forms.Button bnGoSearch;
         private System.Windows.Forms.TextBox txtFindThis;
         public System.Windows.Forms.ListView lvMatches;

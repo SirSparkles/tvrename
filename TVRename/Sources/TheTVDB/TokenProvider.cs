@@ -1,7 +1,7 @@
-using System;
 using JetBrains.Annotations;
 using Newtonsoft.Json.Linq;
 using NLog;
+using System;
 
 namespace TVRename.TheTVDB
 {
@@ -40,16 +40,23 @@ namespace TVRename.TheTVDB
                     // ReSharper disable once HeuristicUnreachableCode
                     ApiVersion.v3 => "5FEC454623154441",
                     // ReSharper disable once HeuristicUnreachableCode
-                    ApiVersion.v4 => "b6bcc474-b211-4c8d-ac8c-2cfccab56e9b",
+                    //ApiVersion.v4 => "b6bcc474-b211-4c8d-ac8c-2cfccab56e9b",
+                    ApiVersion.v4 => "51020266-18f7-4382-81fc-75a4014fa59f",
                     _ => throw new NotSupportedException()
                 };
             }
         }
-        
+
         private string lastKnownToken = string.Empty;
         private DateTime lastRefreshTime = DateTime.MinValue;
 
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+
+        public void Reset()
+        {
+            lastKnownToken = string.Empty;
+            lastRefreshTime = DateTime.MinValue;
+        }
 
         public string GetToken()
         {
@@ -83,7 +90,7 @@ namespace TVRename.TheTVDB
             JObject request = new JObject(new JProperty("apikey", TVDB_API_KEY), new JProperty("pin", "TVDB_API_KEY"));
             JObject jsonResponse = HttpHelper.JsonHttpPostRequest($"{TVDB_API_URL}/login", request, true);
 
-            string newToken = (TVSettings.Instance.TvdbVersion == ApiVersion.v4) ? (string)jsonResponse["data"]["token"] : (string)jsonResponse["token"];
+            string newToken = TVSettings.Instance.TvdbVersion == ApiVersion.v4 ? (string)jsonResponse["data"]?["token"] : (string)jsonResponse["token"];
             if (newToken == null)
             {
                 Logger.Error("Could not refresh Token");

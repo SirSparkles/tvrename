@@ -672,6 +672,7 @@ namespace TVRename
             this.cbRegion.Name = "cbRegion";
             this.cbRegion.Size = new System.Drawing.Size(200, 21);
             this.cbRegion.TabIndex = 47;
+            this.cbRegion.SelectedIndexChanged += new System.EventHandler(this.cbRegion_SelectedIndexChanged);
             // 
             // chkCustomRegion
             // 
@@ -683,6 +684,7 @@ namespace TVRename
             this.chkCustomRegion.TabIndex = 46;
             this.chkCustomRegion.Text = "Custom Region:";
             this.chkCustomRegion.UseVisualStyleBackColor = true;
+            this.chkCustomRegion.CheckedChanged += new System.EventHandler(this.chkCustomRegion_CheckedChanged);
             // 
             // rdoTMDB
             // 
@@ -768,6 +770,7 @@ namespace TVRename
             this.cbLanguage.Name = "cbLanguage";
             this.cbLanguage.Size = new System.Drawing.Size(200, 21);
             this.cbLanguage.TabIndex = 9;
+            this.cbLanguage.SelectedIndexChanged += new System.EventHandler(this.cbLanguage_SelectedIndexChanged);
             // 
             // chkCustomLanguage
             // 

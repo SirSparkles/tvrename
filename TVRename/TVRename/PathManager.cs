@@ -1,13 +1,13 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
 //
-using System;
 using Alphaleonis.Win32.Filesystem;
 using JetBrains.Annotations;
+using System;
 using FileInfo = Alphaleonis.Win32.Filesystem.FileInfo;
 
 namespace TVRename
@@ -20,7 +20,6 @@ namespace TVRename
         private const string SETTINGS_FILE_NAME = "TVRenameSettings.xml";
         private const string UI_LAYOUT_FILE_NAME = "Layout.xml";
         private const string STATISTICS_FILE_NAME = "Statistics.xml";
-        private const string LANGUAGES_FILE_NAME = "Languages.xml";
         private const string STATE_FILE_NAME = "State.xml";
 
         private static string UserDefinedBasePath;
@@ -28,7 +27,10 @@ namespace TVRename
         public static FileInfo[] GetPossibleSettingsHistory() => new DirectoryInfo(System.IO.Path.GetDirectoryName(TVDocSettingsFile.FullName)).GetFiles(SETTINGS_FILE_NAME + "*");
 
         public static FileInfo[] GetPossibleTvdbHistory() => new DirectoryInfo(System.IO.Path.GetDirectoryName(TVDocSettingsFile.FullName)).GetFiles(TVDB_FILE_NAME + "*");
+
         public static FileInfo[] GetPossibleTvMazeHistory() => new DirectoryInfo(System.IO.Path.GetDirectoryName(TVDocSettingsFile.FullName)).GetFiles(TVMAZE_FILE_NAME + "*");
+
+        public static FileInfo[] GetPossibleTmdbHistory() => new DirectoryInfo(System.IO.Path.GetDirectoryName(TVDocSettingsFile.FullName)).GetFiles(TMDB_FILE_NAME + "*");
 
         public static void SetUserDefinedBasePath(string path)
         {
@@ -64,20 +66,45 @@ namespace TVRename
 
         [NotNull]
         public static FileInfo StatisticsFile => GetFileInfo(STATISTICS_FILE_NAME);
+
         // ReSharper disable once InconsistentNaming
         [NotNull]
         public static FileInfo UILayoutFile => GetFileInfo(UI_LAYOUT_FILE_NAME);
+
         // ReSharper disable once InconsistentNaming
         [NotNull]
         public static FileInfo TVDBFile => GetFileInfo(TVDB_FILE_NAME);
+
         // ReSharper disable once InconsistentNaming
         [NotNull]
-        public static FileInfo TVmazeFile=> GetFileInfo(TVMAZE_FILE_NAME);
+        public static FileInfo TVmazeFile => GetFileInfo(TVMAZE_FILE_NAME);
+
         public static FileInfo TmdbFile => GetFileInfo(TMDB_FILE_NAME);
+
         // ReSharper disable once InconsistentNaming
         [NotNull]
         public static FileInfo TVDocSettingsFile => GetFileInfo(SETTINGS_FILE_NAME);
-        [NotNull]
-        public static FileInfo LanguagesFile => GetFileInfo(LANGUAGES_FILE_NAME);
+
+        public static string CefCachePath
+        {
+            get
+            {
+                {
+                    string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TVRename", "cache");
+                    Directory.CreateDirectory(path);
+                    return path;
+                }
+            }
+        }
+
+        public static string CefLogFile
+        {
+            get
+            {
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TVRename", "log");
+                Directory.CreateDirectory(path);
+                return Path.Combine(path, "cef-debug.log");
+            }
+        }
     }
 }

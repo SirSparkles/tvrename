@@ -1,16 +1,16 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
+using JetBrains.Annotations;
 using System;
 using System.Linq;
 using System.Net;
 using System.Xml.Linq;
-using JetBrains.Annotations;
 using TVRename.SAB;
 using FileInfo = Alphaleonis.Win32.Filesystem.FileInfo;
 
@@ -19,12 +19,15 @@ namespace TVRename
     // ReSharper disable once InconsistentNaming
     internal class SABnzbdFinder : DownloadingFinder
     {
-        public SABnzbdFinder(TVDoc i) : base(i) { }
+        public SABnzbdFinder(TVDoc doc, TVDoc.ScanSettings settings) : base(doc, settings)
+        {
+        }
 
         public override bool Active() => TVSettings.Instance.CheckSABnzbd;
+
         protected override string CheckName() => "Looked in the listed SABnz queue to see if the episode is already being downloaded";
 
-        protected override void DoCheck(SetProgressDelegate prog, TVDoc.ScanSettings settings)
+        protected override void DoCheck(SetProgressDelegate prog)
         {
             if (string.IsNullOrEmpty(TVSettings.Instance.SABAPIKey) || string.IsNullOrEmpty(TVSettings.Instance.SABHostPort))
             {
@@ -47,7 +50,7 @@ namespace TVRename
 
             foreach (ShowItemMissing action in ActionList.MissingEpisodes.ToList())
             {
-                if (settings.Token.IsCancellationRequested)
+                if (Settings.Token.IsCancellationRequested)
                 {
                     return;
                 }
@@ -69,7 +72,7 @@ namespace TVRename
                 foreach (QueueSlotsSlot te in x.Descendants("slots").Select(slot => CreateQueueSlotsSlot(slot, simpleShowName, action)).Where(te => !(te is null)))
                 {
                     toRemove.Add(action);
-                    newList.Add(new ItemDownloading(te, action.Episode, action.TheFileNoExt, DownloadApp.SABnzbd,action));
+                    newList.Add(new ItemDownloading(te, action.Episode, action.TheFileNoExt, DownloadApp.SABnzbd, action));
                     break;
                 }
             }

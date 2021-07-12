@@ -1,27 +1,29 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
 using System.Linq;
 
 namespace TVRename
 {
     // ReSharper disable once InconsistentNaming
-    internal class RSSFinder: DownloadFinder
+    internal class RSSFinder : DownloadFinder
     {
-        public RSSFinder(TVDoc i) : base(i) { }
+        public RSSFinder(TVDoc doc, TVDoc.ScanSettings settings) : base(doc, settings)
+        {
+        }
 
         public override bool Active() => TVSettings.Instance.SearchRSS;
 
         protected override string CheckName() => "Looked in the listed RSS URLs for download links for the missing files";
 
-        protected override void DoCheck(SetProgressDelegate prog, TVDoc.ScanSettings settings)
+        protected override void DoCheck(SetProgressDelegate prog)
         {
-            if (TVSettings.Instance.SearchRSSManualScanOnly && settings.Unattended)
+            if (TVSettings.Instance.SearchRSSManualScanOnly && Settings.Unattended)
             {
                 LOGGER.Info("Searching RSS Feeds is cancelled as this is an unattended scan");
                 return;
@@ -34,7 +36,7 @@ namespace TVRename
             RssItemList RSSList = new RssItemList();
             foreach (string s in TVSettings.Instance.RSSURLs)
             {
-                RSSList.DownloadRSS(s, TVSettings.Instance.RSSUseCloudflare,"RSS");
+                RSSList.DownloadRSS(s, TVSettings.Instance.RSSUseCloudflare, "RSS");
             }
 
             ItemList newItems = new ItemList();
@@ -42,7 +44,7 @@ namespace TVRename
 
             foreach (ShowItemMissing action in ActionList.MissingEpisodes.ToList())
             {
-                if (settings.Token.IsCancellationRequested)
+                if (Settings.Token.IsCancellationRequested)
                 {
                     return;
                 }
@@ -69,7 +71,7 @@ namespace TVRename
 
                 newItems.AddNullableRange(newItemsForThisMissingEpisode);
             }
-            ActionList.Replace(toRemove,newItems);
+            ActionList.Replace(toRemove, newItems);
         }
     }
 }

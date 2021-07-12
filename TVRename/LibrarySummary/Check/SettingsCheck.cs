@@ -1,11 +1,12 @@
-using System;
 using NLog;
+using System;
 
 namespace TVRename
 {
     internal abstract class SettingsCheck
     {
         public readonly TVDoc Doc;
+
         public abstract bool Check();
 
         // ReSharper disable once UnusedMember.Global - Property is referred to by the ObjectListView
@@ -14,8 +15,12 @@ namespace TVRename
 
         // ReSharper disable once MemberCanBePrivate.Global- Property is referred to by the ObjectListView
         // ReSharper disable once UnusedAutoPropertyAccessor.Global- Property is referred to by the ObjectListView
-        public string ErrorText {  get; private set; }
-        public bool IsError {  get; private set; }
+        // ReSharper disable once MemberCanBePrivate.Global
+        // ReSharper disable once UnusedAutoPropertyAccessor.Global
+        public string? ErrorText { get; private set; }
+
+        public bool IsError { get; private set; }
+
         public void Fix()
         {
             try
@@ -23,6 +28,7 @@ namespace TVRename
                 IsError = false;
                 ErrorText = string.Empty;
                 FixInternal();
+                MarkMediaDirty();
                 Doc.SetDirty();
             }
             catch (FixCheckException e)
@@ -35,12 +41,17 @@ namespace TVRename
             {
                 IsError = true;
                 ErrorText = exception.Message;
-                LOGGER.Error($"Error occurred fixing {Explain()}, for {MediaName}, error was {exception.Message}");
+                LOGGER.Error(exception,$"Error occurred fixing {Explain()}, for {MediaName}, error was {exception.Message}");
             }
         }
+
         protected abstract void FixInternal();
+
+        protected abstract void MarkMediaDirty();
+
         // ReSharper disable once UnusedMember.Global- Property is referred to by the ObjectListView
         public abstract MediaConfiguration.MediaType Type();
+
         public abstract string MediaName { get; }
 
         public abstract string CheckName { get; }
@@ -48,7 +59,7 @@ namespace TVRename
 
         protected SettingsCheck(TVDoc doc)
         {
-            Doc=doc;
+            Doc = doc;
         }
     }
 }

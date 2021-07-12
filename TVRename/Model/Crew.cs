@@ -1,6 +1,6 @@
+using JetBrains.Annotations;
 using System.Xml;
 using System.Xml.Linq;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -10,7 +10,7 @@ namespace TVRename
         public string? ImageUrl { get; }
         public string Name { get; }
         public string? Job { get; }
-        public string? Department{ get; }
+        public string? Department { get; }
         public string? CreditId { get; }
 
         public Crew(int id, string? image, string actorName, string? job, string? department, string? creditId)
@@ -40,13 +40,13 @@ namespace TVRename
 
         public void WriteXml([NotNull] XmlWriter writer)
         {
-            writer.WriteStartElement("Crew");
+            writer.WriteStartElement("CrewMember");
             writer.WriteElement("Id", Id);
-            writer.WriteElement("Image", ImageUrl);
-            writer.WriteElement("Name", Name);
-            writer.WriteElement("Job", Job);
-            writer.WriteElement("Department", Department);
-            writer.WriteElement("CreditId", CreditId);
+            writer.WriteElement("Image", ImageUrl, true);
+            writer.WriteElement("Name", Name, true);
+            writer.WriteElement("Job", Job, true);
+            writer.WriteElement("Department", Department, true);
+            writer.WriteElement("CreditId", CreditId, true);
             writer.WriteEndElement();
         }
     }

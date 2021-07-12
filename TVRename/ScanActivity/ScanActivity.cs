@@ -1,14 +1,14 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
+using NLog;
 using System;
 using System.Linq;
-using NLog;
 
 namespace TVRename
 {
@@ -19,17 +19,24 @@ namespace TVRename
         private SetProgressDelegate? progressDelegate;
         private int startPosition;
         private int endPosition;
+        protected readonly TVDoc.ScanSettings Settings;
 
-        protected ScanActivity(TVDoc doc) => MDoc = doc;
+        protected ScanActivity(TVDoc doc, TVDoc.ScanSettings settings)
+        {
+            MDoc = doc;
+            Settings = settings;
+        }
 
         protected abstract string CheckName();
+
         public abstract bool Active();
-        protected abstract void DoCheck(SetProgressDelegate prog, TVDoc.ScanSettings settings);
 
-        public void Check(SetProgressDelegate prog, TVDoc.ScanSettings settings) =>
-            Check(prog, 0, 100,  settings);
+        protected abstract void DoCheck(SetProgressDelegate prog);
 
-        public void Check(SetProgressDelegate prog, int startpct, int totPct, TVDoc.ScanSettings settings)
+        public void Check(SetProgressDelegate prog) =>
+            Check(prog, 0, 100);
+
+        public void Check(SetProgressDelegate prog, int startpct, int totPct)
         {
             startPosition = startpct;
             endPosition = totPct;
@@ -37,7 +44,7 @@ namespace TVRename
             progressDelegate.Invoke(startPosition, string.Empty);
             try
             {
-                if (settings.Token.IsCancellationRequested)
+                if (Settings.Token.IsCancellationRequested)
                 {
                     return;
                 }
@@ -47,10 +54,10 @@ namespace TVRename
                     return;
                 }
 
-                DoCheck(prog, settings);
+                DoCheck(prog);
                 LogActionListSummary();
             }
-            catch(TVRenameOperationInterruptedException)
+            catch (TVRenameOperationInterruptedException)
             {
                 throw;
             }
@@ -64,9 +71,9 @@ namespace TVRename
             }
         }
 
-        protected void UpdateStatus(int recordNumber,int totalRecords, string message)
+        protected void UpdateStatus(int recordNumber, int totalRecords, string message)
         {
-            int position = (endPosition - startPosition) * recordNumber / (totalRecords+1);
+            int position = (endPosition - startPosition) * recordNumber / (totalRecords + 1);
             progressDelegate?.Invoke(startPosition + position, message);
         }
 

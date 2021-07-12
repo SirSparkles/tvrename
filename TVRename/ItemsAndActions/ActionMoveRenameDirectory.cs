@@ -1,6 +1,6 @@
+using Alphaleonis.Win32.Filesystem;
 using System;
 using System.Linq;
-using Alphaleonis.Win32.Filesystem;
 
 namespace TVRename
 {
@@ -15,7 +15,12 @@ namespace TVRename
             this.targetFolder = targetFolder;
             Movie = movie;
         }
-
+        public ActionMoveRenameDirectory(string sourceFolder, string targetFolder, ProcessedEpisode episode)
+        {
+            this.sourceFolder = sourceFolder;
+            this.targetFolder = targetFolder;
+            Episode = episode;
+        }
         public override string TargetFolder => targetFolder;
 
         public override string ScanListViewGroup => "lvgActionRename";
@@ -39,7 +44,7 @@ namespace TVRename
             return string.Compare(targetFolder, cmr.targetFolder, StringComparison.Ordinal);
         }
 
-        public override bool SameAs(Item o) => (o is ActionMoveRenameDirectory amd) && amd.targetFolder == targetFolder && amd.sourceFolder == sourceFolder;
+        public override bool SameAs(Item o) => o is ActionMoveRenameDirectory amd && amd.targetFolder == targetFolder && amd.sourceFolder == sourceFolder;
 
         public override string Name => "Rename Directory";
 
@@ -88,7 +93,7 @@ namespace TVRename
                     source.Delete(false);
                     LOGGER.Info($"Deleted empty directory {source.FullName}");
                 }
-                return ActionOutcome.Success(); 
+                return ActionOutcome.Success();
             }
 
             source.MoveTo(targetFolder);

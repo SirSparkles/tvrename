@@ -287,13 +287,16 @@
     <Compile Include="App\ApplicationBase.cs" />
     <Compile Include="App\CommandLineArgs.cs" />
     <Compile Include="App\AutoFolderMonitor.cs" />
-    <Compile Include="Custom Controls\CodeFinder.cs">
+    <Compile Include="Custom Controls\MovieCodeFinder.cs">
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="Custom Controls\ObjectListViewFlickerFree.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Custom Controls\NativeMethods.cs" />
+    <Compile Include="Custom Controls\TvCodeFinder.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Include="Exporter\MissingMovieCSV.cs" />
     <Compile Include="Exporter\MissingMovieXML.cs" />
     <Compile Include="Exporter\MoviesExporter.cs" />
@@ -301,6 +304,7 @@
     <Compile Include="Exporter\MoviesTxt.cs" />
     <Compile Include="Exporter\UpcomingTXT.cs" />
     <Compile Include="Forms\BrowserRequestHandler.cs" />
+    <Compile Include="Forms\CefWrapper.cs" />
     <Compile Include="Forms\Supporting\FaResult.cs" />
     <Compile Include="Forms\Supporting\LinkMovie.cs">
       <SubType>Form</SubType>
@@ -331,6 +335,12 @@
     <Compile Include="Forms\Tools\Recomendations.cs" />
     <Compile Include="Forms\Tools\RecommendationResult.cs" />
     <Compile Include="Forms\Tools\RecommendationRow.cs" />
+    <Compile Include="Forms\Tools\RecommendationViewPreferences.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\Tools\RecommendationViewPreferences.Designer.cs">
+      <DependentUpon>RecommendationViewPreferences.cs</DependentUpon>
+    </Compile>
     <Compile Include="Forms\Tools\SettingsReview.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -351,6 +361,7 @@
     <Compile Include="ItemsAndActions\ActionNfoShow.cs" />
     <Compile Include="ItemsAndActions\MovieItemMissing.cs" />
     <Compile Include="ItemsAndActions\ShowItemMissing.cs" />
+    <Compile Include="LibrarySummary\Check\FolderBaseLibraryDefaultTvCheck.cs" />
     <Compile Include="LibrarySummary\Check\FolderBaseMovieCheck.cs" />
     <Compile Include="LibrarySummary\Check\FolderBaseTvCheck.cs" />
     <Compile Include="LibrarySummary\Check\SettingsCheck.cs" />
@@ -390,6 +401,11 @@
     <Compile Include="LibrarySummary\Check\UseManualFoldersTvShowCheck.cs" />
     <Compile Include="Model\CachedMediaInfo.cs" />
     <Compile Include="Model\Crew.cs" />
+    <Compile Include="Model\ISeriesSpecifier.cs" />
+    <Compile Include="Model\MovieImage.cs" />
+    <Compile Include="Model\MovieImages.cs" />
+    <Compile Include="Model\ShowImage.cs" />
+    <Compile Include="Model\ShowImages.cs" />
     <Compile Include="ScanActivity\DownloadIdentifers\DownloadWdtvMetaData.cs" />
     <Compile Include="ScanActivity\DownloadIdentifers\IncorrectFileDates.cs" />
     <Compile Include="Exporter\ActionListExporter.cs" />
@@ -481,16 +497,20 @@
     <Compile Include="ScanActivity\ScanShowActivity\ScanMovieActivity.cs" />
     <Compile Include="Settings\AppState\UpdateCheck.cs" />
     <Compile Include="Settings\CustomMovieName.cs" />
+    <Compile Include="Settings\LocalPreferences.cs" />
     <Compile Include="Settings\MediaConfiguration.cs" />
     <Compile Include="Settings\MovieConfiguration.cs" />
     <Compile Include="Settings\MovieFilter.cs" />
     <Compile Include="Settings\PreviouslySeenMovies.cs" />
     <Compile Include="Settings\AppState\State.cs" />
+    <Compile Include="Settings\Region.cs" />
+    <Compile Include="Settings\Regions.cs" />
     <Compile Include="Settings\RuleAction.cs" />
     <Compile Include="Settings\SearchEngine.cs" />
     <Compile Include="Sources\SourceConsistencyException.cs" />
     <Compile Include="Sources\TheTVDB\ApiVersion.cs" />
     <Compile Include="Sources\TheTVDB\TvdbAccuracyCheck.cs" />
+    <Compile Include="Sources\CacheHelper.cs" />
     <Compile Include="Sources\TMDB\LocalCache.cs" />
     <Compile Include="Sources\TMDB\API.cs" />
     <Compile Include="Sources\MediaCache.cs" />
@@ -523,7 +543,6 @@
     <Compile Include="Utility\BTListOrDictionaryEnd.cs" />
     <Compile Include="Utility\BTResume.cs" />
     <Compile Include="Utility\BTString.cs" />
-    <Compile Include="Utility\DependencyChecker.cs" />
     <Compile Include="Utility\Extensions\SafeEnumerable.cs" />
     <Compile Include="Utility\Extensions\SafeEnumerator.cs" />
     <Compile Include="Utility\Extensions\SafeList.cs" />
@@ -600,8 +619,8 @@
     <Compile Include="Custom Controls\ListViewFlickerFree.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="Custom Controls\CombinedCodeFinder.Designer.cs">
-      <DependentUpon>CombinedCodeFinder.cs</DependentUpon>
+    <Compile Include="Custom Controls\CodeFinder.Designer.cs">
+      <DependentUpon>CodeFinder.cs</DependentUpon>
     </Compile>
     <Compile Include="ScanActivity\DownloadIdentifers\DownloadEpisodeJPG.cs" />
     <Compile Include="ScanActivity\DownloadIdentifers\DownloadIdentifiersController.cs" />
@@ -680,7 +699,7 @@
     <Compile Include="Settings\ShowConfiguration.cs" />
     <Compile Include="Model\Actor.cs" />
     <Compile Include="Model\SeriesBanners.cs" />
-    <Compile Include="Model\SeriesSpecifier.cs" />
+    <Compile Include="Model\SearchSeriesSpecifier.cs" />
     <Compile Include="Model\MediaNotFoundException.cs" />
     <Compile Include="Sources\SourceConnectivityException.cs" />
     <Compile Include="Model\iTVSource.cs" />
@@ -754,8 +773,8 @@
     <Compile Include="Forms\ShowPreferences\EditSeason.Designer.cs">
       <DependentUpon>EditSeason.cs</DependentUpon>
     </Compile>
-    <Compile Include="Forms\BulkAddShows\FolderMonitor.Designer.cs">
-      <DependentUpon>FolderMonitor.cs</DependentUpon>
+    <Compile Include="Forms\BulkAddShows\BulkAddShow.Designer.cs">
+      <DependentUpon>BulkAddShow.cs</DependentUpon>
     </Compile>
     <Compile Include="Forms\BulkAddShows\BulkAddEditShow.cs">
       <SubType>Form</SubType>
@@ -794,7 +813,7 @@
       <DependentUpon>UpcomingPopup.cs</DependentUpon>
     </Compile>
     <Compile Include="ItemsAndActions\ActionPyTivoMeta.cs" />
-    <Compile Include="Model\Banner.cs" />
+    <Compile Include="Model\MediaImage.cs" />
     <Compile Include="Model\Episode.cs" />
     <Compile Include="Model\ExtraEp.cs" />
     <Compile Include="Settings\ProcessedSeason.cs" />
@@ -836,7 +855,7 @@
     <Compile Include="Forms\ShowPreferences\EditSeason.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="Forms\BulkAddShows\FolderMonitor.cs">
+    <Compile Include="Forms\BulkAddShows\BulkAddShow.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\BulkAddShows\FolderMonitorProgress.cs">
@@ -985,6 +1004,9 @@
       <DependentUpon>DuplicateMovieFinder.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
+    <EmbeddedResource Include="Forms\Tools\RecommendationViewPreferences.resx">
+      <DependentUpon>RecommendationViewPreferences.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Forms\Tools\SettingsReview.resx">
       <DependentUpon>SettingsReview.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -1031,8 +1053,8 @@
       <DependentUpon>Filters.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="Forms\BulkAddShows\FolderMonitor.resx">
-      <DependentUpon>FolderMonitor.cs</DependentUpon>
+    <EmbeddedResource Include="Forms\BulkAddShows\BulkAddShow.resx">
+      <DependentUpon>BulkAddShow.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="Forms\BulkAddShows\BulkAddEditShow.resx">
@@ -1105,8 +1127,8 @@
       <DependentUpon>StatsWindow.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="Custom Controls\CombinedCodeFinder.resx">
-      <DependentUpon>CombinedCodeFinder.cs</DependentUpon>
+    <EmbeddedResource Include="Custom Controls\CodeFinder.resx">
+      <DependentUpon>CodeFinder.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="Forms\UI.resx">
@@ -1144,7 +1166,7 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Sources\TheTVDB\LocalCache.cs" />
-    <Compile Include="Custom Controls\CombinedCodeFinder.cs">
+    <Compile Include="Custom Controls\CodeFinder.cs">
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="TVRename\TVDoc.cs" />

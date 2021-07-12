@@ -1,21 +1,21 @@
+using JetBrains.Annotations;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
-using JetBrains.Annotations;
 using TVRename.Forms.Utilities;
 
 namespace TVRename
 {
     /// <inheritdoc />
     /// <summary>
-    /// Updates TVDB cache in another thread and reports back progress to UI
+    /// Updates Provider cache in another thread and reports back progress to UI
     /// Handles the update happening in the background and also presenting a UI and bringing the update into the
     /// foreground
     /// </summary>
-    public class CacheUpdater:IDisposable
+    public class CacheUpdater : IDisposable
     {
         public bool DownloadDone;
         public int DownloadsRemaining;
@@ -27,9 +27,9 @@ namespace TVRename
         private Semaphore? workerSemaphore;
         private List<Thread> workers;
         private Thread? mDownloaderThread;
-        private ICollection<SeriesSpecifier> downloadIds;
+        private ICollection<ISeriesSpecifier> downloadIds;
         public ConcurrentBag<MediaNotFoundException> Problems { get; }
-        
+
         private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
         private static readonly NLog.Logger Threadslogger = NLog.LogManager.GetLogger("threads");
 
@@ -39,10 +39,10 @@ namespace TVRename
             downloadOk = true;
             Problems = new ConcurrentBag<MediaNotFoundException>();
             workers = new List<Thread>();
-            downloadIds = new List<SeriesSpecifier>();
+            downloadIds = new List<ISeriesSpecifier>();
         }
 
-        public void StartBgDownloadThread(bool stopOnError, ICollection<SeriesSpecifier> shows, bool showMsgBox,
+        public void StartBgDownloadThread(bool stopOnError, ICollection<ISeriesSpecifier> shows, bool showMsgBox,
             CancellationToken ctsToken)
         {
             if (!DownloadDone)
@@ -65,7 +65,7 @@ namespace TVRename
             mDownloaderThread.Start(ctsToken);
         }
 
-        public bool DoDownloadsFg(bool showProgress, bool showMsgBox, ICollection<SeriesSpecifier> shows, UI owner)
+        public bool DoDownloadsFg(bool showProgress, bool showMsgBox, ICollection<ISeriesSpecifier> shows, UI owner)
         {
             if (TVSettings.Instance.OfflineMode)
             {
@@ -76,7 +76,7 @@ namespace TVRename
             Logger.Info("Doing downloads in the foreground...");
 
             CancellationTokenSource cts = new CancellationTokenSource();
-            StartBgDownloadThread(true, shows,showMsgBox,cts.Token);
+            StartBgDownloadThread(true, shows, showMsgBox, cts.Token);
 
             const int DELAY_STEP = 100;
             int count = 1000 / DELAY_STEP; // one second
@@ -97,15 +97,16 @@ namespace TVRename
                 return true;
             }
 
-            Logger.Warn(TheTVDB.LocalCache.Instance.LastErrorMessage +" "+ TVmaze.LocalCache.Instance.LastErrorMessage);
+            string message = TheTVDB.LocalCache.Instance.LastErrorMessage + " " + TVmaze.LocalCache.Instance.LastErrorMessage + " " + TMDB.LocalCache.Instance.LastErrorMessage;
+            Logger.Warn(message);
             if (showErrorMsgBox)
             {
-                CannotConnectForm ccform = new CannotConnectForm("Error while downloading", TheTVDB.LocalCache.Instance.LastErrorMessage + " " + TVmaze.LocalCache.Instance.LastErrorMessage);
+                CannotConnectForm ccform = new CannotConnectForm("Error while downloading", message, FindProviderWithError());
 
                 owner.ShowChildDialog(ccform);
                 DialogResult ccresult = ccform.DialogResult;
                 ccform.Dispose();
-                    
+
                 if (ccresult == DialogResult.Abort)
                 {
                     TVSettings.Instance.OfflineMode = true;
@@ -119,6 +120,25 @@ namespace TVRename
             return downloadOk;
         }
 
+        private TVDoc.ProviderType FindProviderWithError()
+        {
+            if (TheTVDB.LocalCache.Instance.LastErrorMessage.HasValue())
+            {
+                return TVDoc.ProviderType.TheTVDB;
+            }
+            if (TMDB.LocalCache.Instance.LastErrorMessage.HasValue())
+            {
+                return TVDoc.ProviderType.TMDB;
+            }
+            if (TVmaze.LocalCache.Instance.LastErrorMessage.HasValue())
+            {
+                return TVDoc.ProviderType.TVmaze;
+            }
+
+            //Should never get here, but just in case
+            return TVSettings.Instance.DefaultProvider;
+        }
+
         public void StopBgDownloadThread()
         {
             if (mDownloaderThread is null)
@@ -130,16 +150,16 @@ namespace TVRename
             mDownloaderThread.Join();
             mDownloaderThread = null;
         }
-        
+
         private void GetThread([NotNull] object codeIn)
         {
             System.Diagnostics.Debug.Assert(workerSemaphore != null);
 
-            SeriesSpecifier series;
+            ISeriesSpecifier series;
 
             switch (codeIn)
             {
-                case SeriesSpecifier ss:
+                case ISeriesSpecifier ss:
                     series = ss;
                     break;
 
@@ -228,18 +248,14 @@ namespace TVRename
                     }
                 }
 
-                //TODO - Reinstate once v4 updates are working
-                if (TVSettings.Instance.TvdbVersion != TheTVDB.ApiVersion.v4)
+                if (downloadIds.Any(s => s.Provider == TVDoc.ProviderType.TheTVDB))
                 {
-                    if (downloadIds.Any(s => s.Provider == TVDoc.ProviderType.TheTVDB))
+                    if (!TheTVDB.LocalCache.Instance.GetUpdates(showErrorMsgBox, cts,
+                        downloadIds.Where(specifier => specifier.Provider == TVDoc.ProviderType.TheTVDB)))
                     {
-                        if (!TheTVDB.LocalCache.Instance.GetUpdates(showErrorMsgBox, cts,
-                            downloadIds.Where(specifier => specifier.Provider == TVDoc.ProviderType.TheTVDB)))
-                        {
-                            DownloadDone = true;
-                            downloadOk = false;
-                            return;
-                        }
+                        DownloadDone = true;
+                        downloadOk = false;
+                        return;
                     }
                 }
 
@@ -254,15 +270,14 @@ namespace TVRename
                     }
                 }
 
-
                 // for each of the ShowItems, make sure we've got downloaded data for it
 
                 int totalItems = downloadIds.Count;
                 int n = 0;
 
                 int numWorkers = TVSettings.Instance.ParallelDownloads;
-                Logger.Info($"Setting up {numWorkers} threads to download information from TheTVDB.com, TMDB and TVMaze.com" );
-                Logger.Info($"Working on {CountIdsFrom(TVDoc.ProviderType.TheTVDB,MediaConfiguration.MediaType.tv)} TVDB, {CountIdsFrom(TVDoc.ProviderType.TMDB, MediaConfiguration.MediaType.tv)} TMDB and {CountIdsFrom(TVDoc.ProviderType.TVmaze, MediaConfiguration.MediaType.tv)} TV Maze shows.");
+                Logger.Info($"Setting up {numWorkers} threads to download information from TheTVDB, TMDB and TVMaze");
+                Logger.Info($"Working on {CountIdsFrom(TVDoc.ProviderType.TheTVDB, MediaConfiguration.MediaType.tv)} TVDB, {CountIdsFrom(TVDoc.ProviderType.TMDB, MediaConfiguration.MediaType.tv)} TMDB and {CountIdsFrom(TVDoc.ProviderType.TVmaze, MediaConfiguration.MediaType.tv)} TV Maze shows.");
                 Logger.Info($"Working on {CountIdsFrom(TVDoc.ProviderType.TheTVDB, MediaConfiguration.MediaType.movie)} TVDB and {CountIdsFrom(TVDoc.ProviderType.TMDB, MediaConfiguration.MediaType.movie)} TMDB Movies.");
                 Logger.Info($"Identified that {CountDirtyIdsFrom(TVDoc.ProviderType.TheTVDB, MediaConfiguration.MediaType.tv)} TVDB, {CountDirtyIdsFrom(TVDoc.ProviderType.TMDB, MediaConfiguration.MediaType.tv)} TMDB and {CountDirtyIdsFrom(TVDoc.ProviderType.TVmaze, MediaConfiguration.MediaType.tv)} TV Maze shows need to be updated");
                 Logger.Info($"Identified that {CountDirtyIdsFrom(TVDoc.ProviderType.TheTVDB, MediaConfiguration.MediaType.movie)} TVDB and {CountDirtyIdsFrom(TVDoc.ProviderType.TMDB, MediaConfiguration.MediaType.movie)} TMDB movies need to be updated");
@@ -271,7 +286,7 @@ namespace TVRename
                 Semaphore newSemaphore = new Semaphore(numWorkers, numWorkers); // allow up to numWorkers working at once
                 workerSemaphore = newSemaphore;
 
-                foreach (SeriesSpecifier code in downloadIds)
+                foreach (ISeriesSpecifier code in downloadIds)
                 {
                     if (cts.IsCancellationRequested)
                     {
@@ -333,19 +348,17 @@ namespace TVRename
             }
         }
 
-        private int CountIdsFrom(TVDoc.ProviderType provider,MediaConfiguration.MediaType type)
+        private int CountIdsFrom(TVDoc.ProviderType provider, MediaConfiguration.MediaType type)
         {
-            return downloadIds.Count(s => s.Provider == provider && s.Type == type);
+            return downloadIds.Count(s => s.Provider == provider && s.Media == type);
         }
 
         private int CountDirtyIdsFrom(TVDoc.ProviderType provider, MediaConfiguration.MediaType type)
         {
             return type == MediaConfiguration.MediaType.tv
-                ?downloadIds.Count(s => s.Provider == provider && s.Type == type && (TVDoc.GetMediaCache(provider).GetSeries(s.IdFor(provider))?.Dirty ?? true))
-                :downloadIds.Count(s => s.Provider == provider && s.Type == type && (TVDoc.GetMediaCache(provider).GetMovie (s.IdFor(provider))?.Dirty ?? true));
-
+                ? downloadIds.Count(s => s.Provider == provider && s.Media == type && (TVDoc.GetMediaCache(provider).GetSeries(s.IdFor(provider))?.Dirty ?? true))
+                : downloadIds.Count(s => s.Provider == provider && s.Media == type && (TVDoc.GetMediaCache(provider).GetMovie(s.IdFor(provider))?.Dirty ?? true));
         }
-
 
         private void WaitForBgDownloadDone()
         {
@@ -379,28 +392,28 @@ namespace TVRename
 
         public void ClearProblems()
         {
-            List<SeriesSpecifier> toRemove = new List<SeriesSpecifier>();
+            List<ISeriesSpecifier> toRemove = new List<ISeriesSpecifier>();
 
             foreach (MediaNotFoundException sid in Problems)
             {
-                foreach (SeriesSpecifier ss in downloadIds)
+                foreach (ISeriesSpecifier ss in downloadIds)
                 {
-                    if (ss.TvdbSeriesId == sid.ShowId && sid.ShowIdProvider == TVDoc.ProviderType.TheTVDB)
+                    if (ss.TvdbId == sid.Media.TvdbId && sid.ShowIdProvider == TVDoc.ProviderType.TheTVDB)
                     {
                         toRemove.Add(ss);
                     }
-                    if (ss.TvMazeSeriesId == sid.ShowId && sid.ShowIdProvider == TVDoc.ProviderType.TVmaze)
+                    if (ss.TvMazeId == sid.Media.TvMazeId && sid.ShowIdProvider == TVDoc.ProviderType.TVmaze)
                     {
                         toRemove.Add(ss);
                     }
-                    if (ss.TmdbId == sid.ShowId && sid.ShowIdProvider == TVDoc.ProviderType.TMDB)
+                    if (ss.TmdbId == sid.Media.TmdbId && sid.ShowIdProvider == TVDoc.ProviderType.TMDB)
                     {
                         toRemove.Add(ss);
                     }
                 }
             }
 
-            foreach (SeriesSpecifier s in toRemove)
+            foreach (ISeriesSpecifier s in toRemove)
             {
                 downloadIds.Remove(s);
             }

@@ -1,8 +1,8 @@
+using Alphaleonis.Win32.Filesystem;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Alphaleonis.Win32.Filesystem;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -17,7 +17,7 @@ namespace TVRename
             downloadIdentifiers = new DownloadIdentifiersController();
         }
 
-        protected override void Check(ShowConfiguration si, DirFilesCache dfc,TVDoc.ScanSettings settings)
+        protected override void Check(ShowConfiguration si, DirFilesCache dfc, TVDoc.ScanSettings settings)
         {
             Dictionary<int, SafeList<string>> allFolders = si.AllExistngFolderLocations();
             if (allFolders.Count == 0) // no folders defined for this show
@@ -120,7 +120,7 @@ namespace TVRename
                 return;
             }
 
-            Dictionary<int,FileInfo> localEps = new Dictionary<int, FileInfo>();
+            Dictionary<int, FileInfo> localEps = new Dictionary<int, FileInfo>();
             int maxEpNumFound = 0;
 
             if (!si.SeasonEpisodes.ContainsKey(snum))
@@ -152,7 +152,7 @@ namespace TVRename
 
                 if (ep is null)
                 {
-                    continue; // season+episode number don't correspond to any episode we know of from thetvdb
+                    continue; // season+episode number don't correspond to any episode we know of
                 }
 
                 FileInfo actualFile = fi;
@@ -198,29 +198,7 @@ namespace TVRename
             {
                 if (!localEps.ContainsKey(episode.AppropriateEpNum)) // not here locally
                 {
-                    // second part of missing check is to see what is missing!
-                    if (missCheck)
-                    {
-                        DateTime? dt = episode.GetAirDateDt(true);
-                        bool dtOk = dt != null;
-
-                        bool notFuture =
-                            dtOk && dt.Value.CompareTo(today) < 0; // isn't an episode yet to be aired
-
-                        // only add to the missing list if, either:
-                        // - force check is on
-                        // - there are no aired dates at all, for up to and including this season
-                        // - there is an aired date, and it isn't in the future
-                        bool noAirdatesUntilNow = si.NoAirdatesUntilNow(snum);
-                        bool siForceCheckFuture = (si.ForceCheckFuture || notFuture) && dtOk;
-                        bool siForceCheckNoAirdate = si.ForceCheckNoAirdate && !dtOk;
-
-                        if (noAirdatesUntilNow || siForceCheckFuture || siForceCheckNoAirdate)
-                        {
-                            // then add it as officially missing
-                            Doc.TheActionList.Add(new ShowItemMissing(episode, folder));
-                        }
-                    }// if doing missing check
+                    AddMissingIfNeeded(si, snum, folder, missCheck, episode, today);
                 }
                 else
                 {
@@ -230,15 +208,41 @@ namespace TVRename
                     }
 
                     // do NFO and thumbnail checks if required
-                    FileInfo
-                        filo = localEps[episode.AppropriateEpNum]; // filename (or future filename) of the file
-
+                    FileInfo filo = localEps[episode.AppropriateEpNum]; // filename (or future filename) of the file
                     Doc.TheActionList.Add(downloadIdentifiers.ProcessEpisode(episode, filo));
                 }
-            } // up to date check, for each episode in thetvdb
+            } // up to date check, for each episode
         }
 
-        private FileInfo? CheckFile([NotNull] string folder, FileInfo fi, [NotNull] FileInfo actualFile, string newName, ProcessedEpisode ep,IEnumerable<FileInfo> files)
+        private void AddMissingIfNeeded(ShowConfiguration si, int snum, string folder, bool missCheck, ProcessedEpisode episode,
+            DateTime today)
+        {
+            // second part of missing check is to see what is missing!
+            if (missCheck)
+            {
+                DateTime? dt = episode.GetAirDateDt(true);
+                bool dtOk = dt != null;
+
+                bool notFuture =
+                    dtOk && dt.Value.CompareTo(today) < 0; // isn't an episode yet to be aired
+
+                // only add to the missing list if, either:
+                // - force check is on
+                // - there are no aired dates at all, for up to and including this season
+                // - there is an aired date, and it isn't in the future
+                bool noAirdatesUntilNow = si.NoAirdatesUntilNow(snum);
+                bool siForceCheckFuture = (si.ForceCheckFuture || notFuture) && dtOk;
+                bool siForceCheckNoAirdate = si.ForceCheckNoAirdate && !dtOk;
+
+                if (noAirdatesUntilNow || siForceCheckFuture || siForceCheckNoAirdate)
+                {
+                    // then add it as officially missing
+                    Doc.TheActionList.Add(new ShowItemMissing(episode, folder));
+                }
+            } // if doing missing check
+        }
+
+        private FileInfo? CheckFile([NotNull] string folder, FileInfo fi, [NotNull] FileInfo actualFile, string newName, ProcessedEpisode ep, IEnumerable<FileInfo> files)
         {
             if (TVSettings.Instance.RetainLanguageSpecificSubtitles)
             {
@@ -253,8 +257,7 @@ namespace TVRename
 
             FileInfo newFile = FileHelper.FileInFolder(folder, newName); // rename updates the filename
 
-            //**** TODO *** Parameterise case insensitive search
-            if (!string.Equals(newFile.FullName,actualFile.FullName,StringComparison.CurrentCultureIgnoreCase))
+            if (!string.Equals(newFile.FullName, actualFile.FullName, TVSettings.Instance.FileNameComparisonType))
             {
                 //Check that the file does not already exist
                 //if (FileHelper.FileExistsCaseSensitive(newFile.FullName))
@@ -267,10 +270,10 @@ namespace TVRename
                 {
                     LOGGER.Info($"Identified that {actualFile.FullName} should be renamed to {newName}.");
                     Doc.TheActionList.Add(new ActionCopyMoveRename(ActionCopyMoveRename.Op.rename, fi,
-                        newFile, ep, false, null,Doc));
+                        newFile, ep, false, null, Doc));
 
                     //The following section informs the DownloadIdentifers that we already plan to
-                    //copy a file in the appropriate place and they do not need to worry about downloading 
+                    //copy a file in the appropriate place and they do not need to worry about downloading
                     //one for that purpose
                     downloadIdentifiers.NotifyComplete(newFile);
 

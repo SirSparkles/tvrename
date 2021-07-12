@@ -10,10 +10,12 @@ namespace TVRename
     internal class uTorrent : IDownloadProvider
     {
         private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
         public void RemoveCompletedDownload(TorrentEntry name)
         {
             throw new NotSupportedException();
         }
+
         public string Name() => "uTorrent";
 
         public void StartUrlDownload(string torrentUrl)
@@ -32,7 +34,7 @@ namespace TVRename
                     return null;
                 }
 
-                BTResume btr = new BTResume((percent, message) => { }, resDatFile);
+                BTResume btr = new BTResume(resDatFile);
                 if (!btr.LoadResumeDat())
                 {
                     return null;
@@ -54,8 +56,7 @@ namespace TVRename
 
         public void StartTorrentDownload(FileInfo torrentFile)
         {
-            string torrentFileName = torrentFile.Name;
-            System.Diagnostics.Process.Start(TVSettings.Instance.uTorrentPath, "/directory \"" + torrentFile.Directory.FullName + "\" \"" + torrentFileName + "\"");
+            System.Diagnostics.Process.Start(TVSettings.Instance.uTorrentPath, "\""+torrentFile.FullName+ "\"");
         }
     }
 }

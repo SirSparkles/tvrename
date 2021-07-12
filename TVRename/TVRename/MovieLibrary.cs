@@ -1,24 +1,17 @@
+using System;
+using JetBrains.Annotations;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
     public class MovieLibrary : SafeList<MovieConfiguration>
     {
         private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
-        [NotNull]
-        public IEnumerable<MovieConfiguration> Movies => this;
 
         [NotNull]
-        public IEnumerable<SeriesSpecifier> SeriesSpecifiers
-        {
-            get
-            {
-                return this.Select(series => new SeriesSpecifier(series.TvdbCode, series.TVmazeCode,series.TmdbCode, series.UseCustomLanguage, series.CustomLanguageCode, series.ShowName, series.Provider, series.CachedMovie?.Imdb , MediaConfiguration.MediaType.movie)).ToList();
-            }
-        }
+        public IEnumerable<MovieConfiguration> Movies => this;
 
         public List<(int, string)> Collections => Movies
             .Select(c => (c.CachedMovie?.CollectionId, c.CachedMovie?.CollectionName))
@@ -41,7 +34,11 @@ namespace TVRename
 
         public MovieConfiguration? GetMovie(int id, TVDoc.ProviderType provider)
         {
-            List<MovieConfiguration>? matching = this.Where(configuration => configuration.IdCode(provider) == id).ToList();
+            if (id == 0 || id == -1)
+            {
+                return null;
+            }
+            List<MovieConfiguration> matching = Movies.Where(configuration => configuration.IdFor(provider) == id).ToList();
 
             if (!matching.Any())
             {
@@ -51,41 +48,43 @@ namespace TVRename
             {
                 return matching.First();
             }
-            Logger.Error($"Movie Library has multiple: {matching.Select(x => x.ToString()).ToCsv()}");
-            return matching.First();
-        }
-        
-        /*
-        internal void Add([NotNull] MovieConfiguration found)
+            throw new InvalidOperationException(
+                $"Searched for {id} on {provider.PrettyPrint()} Movie Library has multiple: {matching.Select(x => x.ToString()).ToCsv()}");
+    }
+
+    public new void AddMovie(MovieConfiguration newShow)
         {
-            if (found.Code == -1)
+            if (Contains(newShow))
             {
                 return;
             }
 
-            if (TryAdd(found.Code, found))
+            List<MovieConfiguration> matchingShows = Movies.Where(configuration => configuration.AnyIdsMatch(newShow)).ToList();
+            if (matchingShows.Any())
+            {
+                foreach (MovieConfiguration existingshow in matchingShows)
+                {
+                    //TODO Merge them in
+                    Logger.Error($"Trying to add {newShow}, but we already have {existingshow}");
+                    Logger.Error(Environment.StackTrace);
+                }
+                return;
+            }
+
+            Add(newShow);
+        }
+        public void AddMovies(List<MovieConfiguration>? newMovie)
+        {
+            if (newMovie is null)
             {
                 return;
             }
 
-            if (ContainsKey(found.Code))
+            foreach (MovieConfiguration toAdd in newMovie)
             {
-                Logger.Warn($"Failed to Add {found.ShowName} with {found.SourceProviderName}={found.Code} to library, but it's already present");
-            }
-            else
-            {
-                Logger.Error($"Failed to Add {found.ShowName} with {found.SourceProviderName}={found.Code} to library");
+                AddMovie(toAdd);
             }
         }
-
-        internal void Remove([NotNull] MovieConfiguration si)
-        {
-            if (!TryRemove(si.TmdbCode, out _))
-            {
-                Logger.Error($"Failed to remove {si.ShowName} from the library with TMDBCode={si.TmdbCode}");
-            }
-        }
-        */
 
         public void LoadFromXml(XElement? xmlSettings)
         {
@@ -93,18 +92,18 @@ namespace TVRename
             {
                 foreach (MovieConfiguration si in xmlSettings.Descendants("MovieItem").Select(showSettings => new MovieConfiguration(showSettings)))
                 {
-                    // if (si.UseCustomShowName) // see if custom show name is actually the real show name
-                    // {
-                    //     CachedSeriesInfo ser = si.TheSeries();
-                    //     if (ser != null && si.CustomShowName == ser.Name)
-                    //     {
-                    //         // then, turn it off
-                    //         si.CustomShowName = string.Empty;
-                    //         si.UseCustomShowName = false;
-                    //     }
-                    // }
+                    if (si.UseCustomShowName) // see if custom show name is actually the real show name
+                    {
+                        CachedMovieInfo? ser = si.CachedMovie;
+                        if (ser != null && si.CustomShowName == ser.Name)
+                        {
+                            // then, turn it off
+                            si.CustomShowName = string.Empty;
+                            si.UseCustomShowName = false;
+                        }
+                    }
 
-                    Add(si);
+                    AddMovie(si);
                 }
             }
         }
@@ -151,29 +150,13 @@ namespace TVRename
         public IEnumerable<string> GetStatuses()
         {
             return Movies
-                .Select(s=>s.CachedMovie)
+                .Select(s => s.CachedMovie)
                 .Where(s => !string.IsNullOrWhiteSpace(s?.Status))
                 .Select(s => s.Status)
                 .Distinct()
                 .OrderBy(s => s);
         }
 
-        public MovieConfiguration? GetMovie(PossibleNewMovie ai)
-        {
-            return GetMovie(ai.ProviderCode,ai.Provider);
-        }
-
-        public void AddRange(IEnumerable<MovieConfiguration>? addedShows)
-        {
-            if (addedShows is null)
-            {
-                return;
-            }
-
-            foreach (MovieConfiguration show in addedShows)
-            {
-                Add(show);
-            }
-        }
+        public MovieConfiguration? GetMovie(ISeriesSpecifier ai) => GetMovie(ai.Id(), ai.Provider);
     }
 }

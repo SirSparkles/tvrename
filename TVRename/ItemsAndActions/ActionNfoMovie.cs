@@ -1,7 +1,8 @@
-using System.Globalization;
-using System.Xml.Linq;
 using Alphaleonis.Win32.Filesystem;
 using JetBrains.Annotations;
+using System.Globalization;
+using System.Linq;
+using System.Xml.Linq;
 
 namespace TVRename
 {
@@ -37,26 +38,14 @@ namespace TVRename
                 UpdateRatings(root, showRating.Value.ToString(CultureInfo.InvariantCulture), cachedSeries.SiteRatingVotes);
             }
 
-            string lang = TVSettings.Instance.PreferredLanguageCode;
-
-            if (Movie.UseCustomLanguage && Movie.PreferredLanguage != null)
-            {
-                lang = Movie.PreferredLanguage.Abbreviation;
-            }
-
             //https://forum.kodi.tv/showthread.php?tid=323588
             //says that we need a format like this:
             //<episodeguide><url post="yes" cache="auth.json">https://api.thetvdb.com/login?{&quot;apikey&quot;:&quot;((API-KEY))&quot;,&quot;id&quot;:((ID))}|Content-Type=application/json</url></episodeguide>
 
-            XElement episodeGuideNode = root.GetOrCreateElement("episodeguide");
-            XElement urlNode = episodeGuideNode.GetOrCreateElement("url");
-            urlNode.UpdateAttribute("post", "yes");
-            urlNode.UpdateAttribute("cache", "auth.json");
-            urlNode.SetValue(TheTVDB.API.BuildUrl(Movie.TvdbCode, lang));
-
             if (!(cachedSeries is null))
             {
                 root.UpdateElement("originaltitle", Movie.ShowName);
+                root.UpdateElement("sorttitle", UI.GenerateShowUiName(Movie));
                 UpdateAmongstElements(root, "studio", cachedSeries.Network);
                 root.UpdateElement("id", Movie.Code);
                 root.UpdateElement("runtime", cachedSeries.Runtime, true);
@@ -76,12 +65,20 @@ namespace TVRename
                 UpdateId(root, "tvdb", "false", cachedSeries.TvdbCode);
                 UpdateId(root, "imdb", "false", cachedSeries.Imdb);
                 UpdateId(root, "tmdb", "true", cachedSeries.TmdbCode);
+
+                root.ReplaceElements("genre", Movie.Genres);
+                root.ReplaceElements("credits", cachedSeries.GetCrew().Where(c=>c.Department=="Writing").Select(c=>c.Name));
+                root.ReplaceElements("director", cachedSeries.GetCrew().Where(c => c.Department == "Directing").Select(c => c.Name));
+
+                ReplaceActors(root, Movie.Actors);
+
+                ReplaceThumbs(root, "poster", cachedSeries.Images(MediaImage.ImageType.poster));
+                ReplaceThumbs(root, "banner", cachedSeries.Images(MediaImage.ImageType.wideBanner));
+                ReplaceThumbs(root, "keyart", cachedSeries.Images(MediaImage.ImageType.clearArt));
+                ReplaceThumbs(root, "clearlogo", cachedSeries.Images(MediaImage.ImageType.clearLogo));
+
+                ReplaceFanart(root, cachedSeries.Images(MediaImage.ImageType.background));
             }
-
-            root.ReplaceElements("genre", Movie.Genres);
-
-            ReplaceActors(root, Movie.Actors);
-
             doc.Save(Where.FullName);
             return ActionOutcome.Success();
         }

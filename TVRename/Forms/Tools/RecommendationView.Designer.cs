@@ -50,6 +50,7 @@ namespace TVRename.Forms
             this.chkRemoveExisting = new System.Windows.Forms.CheckBox();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.chrRecommendationPreview = new CefSharp.WinForms.ChromiumWebBrowser();
+            this.btnPreferences = new System.Windows.Forms.Button();
             this.possibleMergedEpisodeRightClickMenu.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.lvRecommendations)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
@@ -167,7 +168,10 @@ namespace TVRename.Forms
             // olvId
             // 
             this.olvId.AspectName = "Key";
+            this.olvId.Groupable = false;
+            this.olvId.IsEditable = false;
             this.olvId.Text = "Id";
+            this.olvId.UseFiltering = false;
             // 
             // olvName
             // 
@@ -179,7 +183,9 @@ namespace TVRename.Forms
             // olvScore
             // 
             this.olvScore.AspectName = "RecommendationScore";
-            this.olvScore.Text = "Score";
+            this.olvScore.AspectToStringFormat = "{0:p1}";
+            this.olvScore.Text = "Recommendation %";
+            this.olvScore.Width = 112;
             // 
             // olvYear
             // 
@@ -189,6 +195,7 @@ namespace TVRename.Forms
             // olvRating
             // 
             this.olvRating.AspectName = "StarScore";
+            this.olvRating.AspectToStringFormat = "{0:0.00}";
             this.olvRating.Text = "Quality Rating";
             this.olvRating.Width = 88;
             // 
@@ -257,6 +264,17 @@ namespace TVRename.Forms
             this.chrRecommendationPreview.Size = new System.Drawing.Size(477, 676);
             this.chrRecommendationPreview.TabIndex = 0;
             // 
+            // btnPreferences
+            // 
+            this.btnPreferences.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnPreferences.Location = new System.Drawing.Point(1034, 1);
+            this.btnPreferences.Name = "btnPreferences";
+            this.btnPreferences.Size = new System.Drawing.Size(110, 22);
+            this.btnPreferences.TabIndex = 14;
+            this.btnPreferences.Text = "Preferences";
+            this.btnPreferences.UseVisualStyleBackColor = true;
+            this.btnPreferences.Click += new System.EventHandler(this.btnPreferences_Click);
+            // 
             // RecommendationView
             // 
             this.AcceptButton = this.btnClose;
@@ -264,6 +282,7 @@ namespace TVRename.Forms
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.btnClose;
             this.ClientSize = new System.Drawing.Size(1156, 737);
+            this.Controls.Add(this.btnPreferences);
             this.Controls.Add(this.splitContainer1);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.pbProgress);
@@ -277,6 +296,7 @@ namespace TVRename.Forms
             this.Name = "RecommendationView";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Recommendations";
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.this_FormClosing);
             this.possibleMergedEpisodeRightClickMenu.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.lvRecommendations)).EndInit();
             this.splitContainer1.Panel1.ResumeLayout(false);
@@ -309,5 +329,6 @@ namespace TVRename.Forms
         private BrightIdeasSoftware.OLVColumn olvId;
         private System.Windows.Forms.SplitContainer splitContainer1;
         private CefSharp.WinForms.ChromiumWebBrowser chrRecommendationPreview;
+        private System.Windows.Forms.Button btnPreferences;
     }
 }

@@ -6,10 +6,13 @@ namespace TVRename
     // ReSharper disable once InconsistentNaming
     internal class UpcomingTXT : UpcomingExporter
     {
-        public UpcomingTXT(TVDoc i) : base(i) { }
+        public UpcomingTXT(TVDoc i) : base(i)
+        {
+        }
 
         public override bool Active() => TVSettings.Instance.ExportWTWTXT;
-        protected override string Location() =>  TVSettings.Instance.ExportWTWTXTTo;
+
+        protected override string Location() => TVSettings.Instance.ExportWTWTXTTo;
 
         protected override bool Generate(System.IO.Stream str, IEnumerable<ProcessedEpisode> elist)
         {
@@ -32,24 +35,24 @@ namespace TVRename
             }
         }
 
-        private string HeaderLine() => FormattedLine("Show","Network","Day","Time");
+        private string HeaderLine() => FormattedLine("Show", "Network", "Day", "Time");
 
         private string ConvertToLine(ProcessedEpisode ei)
         {
             DateTime? stTime = ei.GetAirDateDt(true);
-            
+
             if (!stTime.HasValue)
             {
-                return null;
+                return string.Empty;
             }
 
             string niceName = TVSettings.Instance.NamingStyle.NameFor(ei);
             DateTime startTime = stTime.Value;
-            
-            return FormattedLine(niceName, ei.TheCachedSeries.Network, startTime.ToString("ddd, d MMM"), startTime.ToString("HH:mm"));
+
+            return FormattedLine(niceName, ei.TheCachedSeries.Network ?? string.Empty, startTime.ToString("ddd, d MMM"), startTime.ToString("HH:mm"));
         }
 
-        private string FormattedLine(string niceName, string? network, string day, string time)
+        private string FormattedLine(string niceName, string network, string day, string time)
         {
             return $"{day,-15} {time,-10} {network.First(15),-15} {niceName.First(80),-80}";
         }

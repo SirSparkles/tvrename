@@ -1,14 +1,14 @@
+using JetBrains.Annotations;
+using NLog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
-using JetBrains.Annotations;
 using DirectoryInfo = Alphaleonis.Win32.Filesystem.DirectoryInfo;
 using File = Alphaleonis.Win32.Filesystem.File;
 using FileInfo = Alphaleonis.Win32.Filesystem.FileInfo;
-using NLog;
 
 namespace TVRename
 {
@@ -16,6 +16,7 @@ namespace TVRename
     {
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
         public static string LoadErr;
+
         private static void RotateCacheFiles([NotNull] FileInfo cacheFile)
         {
             if (cacheFile.Exists)
@@ -75,53 +76,19 @@ namespace TVRename
                 {
                     writer.WriteStartDocument();
                     writer.WriteStartElement("Data");
-                    writer.WriteAttributeToXml("time",timestamp);
+                    writer.WriteAttributeToXml("time", timestamp);
 
                     foreach (KeyValuePair<int, CachedSeriesInfo> kvp in series)
                     {
                         if (kvp.Value.SrvLastUpdated != 0)
                         {
                             kvp.Value.WriteXml(writer);
-                            foreach (Episode e in kvp.Value.Episodes)
-                            {
-                                e.WriteXml(writer);
-                            }
                         }
                         else
                         {
-                            Logger.Info($"Cannot save {kvp.Value.TvdbCode} ({kvp.Value.Name}) as it has not been updated at all.");
+                            Logger.Info($"Cannot save TV {kvp.Key} ({kvp.Value.Name}) to {cacheFile.Name} as it has not been updated at all.");
                         }
                     }
-
-                    //
-                    // <BannersCache>
-                    //      <BannersItem>
-                    //          <SeriesId>123</SeriesId>
-                    //          <Banners>
-                    //              <Banner>
-
-                    writer.WriteStartElement("BannersCache");
-
-                    foreach (KeyValuePair<int, CachedSeriesInfo> kvp in series)
-                    {
-                        writer.WriteStartElement("BannersItem");
-
-                        writer.WriteElement("SeriesId", kvp.Key);
-
-                        writer.WriteStartElement("Banners");
-
-                        //We need to write out all banners that we have in any of the collections. 
-
-                        foreach (Banner ban in kvp.Value.AllBanners.Select(kvp3 => kvp3.Value))
-                        {
-                            ban.WriteXml(writer);
-                        }
-
-                        writer.WriteEndElement(); //Banners
-                        writer.WriteEndElement(); //BannersItem
-                    }
-
-                    writer.WriteEndElement(); // BannersCache
 
                     foreach (KeyValuePair<int, CachedMovieInfo> kvp in movies)
                     {
@@ -131,39 +98,9 @@ namespace TVRename
                         }
                         else
                         {
-                            Logger.Info($"Cannot save {kvp.Value.TvdbCode} ({kvp.Value.Name}) as it is a search result that has not been used.");
+                            Logger.Info($"Cannot save Movie {kvp.Key} ({kvp.Value.Name}) to {cacheFile.Name} as it is a search result that has not been used.");
                         }
                     }
-
-                    // TODO SAVE MIE BANNERS if we ever have them
-                    // <BannersCache>
-                    //      <BannersItem>
-                    //          <SeriesId>123</SeriesId>
-                    //          <Banners>
-                    //              <Banner>
-
-                    /*writer.WriteStartElement("BannersCache");
-
-                    foreach (KeyValuePair<int, CachedSeriesInfo> kvp in series)
-                    {
-                        writer.WriteStartElement("BannersItem");
-
-                        writer.WriteElement("SeriesId", kvp.Key);
-
-                        writer.WriteStartElement("Banners");
-
-                        //We need to write out all banners that we have in any of the collections. 
-
-                        foreach (Banner ban in kvp.Value.AllBanners.Select(kvp3 => kvp3.Value))
-                        {
-                            ban.WriteXml(writer);
-                        }
-
-                        writer.WriteEndElement(); //Banners
-                        writer.WriteEndElement(); //BannersItem
-                    }
-
-                    writer.WriteEndElement(); // BannersCache*/
 
                     writer.WriteEndElement(); // data
 
@@ -176,7 +113,7 @@ namespace TVRename
             }
         }
 
-        public static bool LoadTvCache([NotNull] FileInfo loadFrom,iTVSource cache)
+        public static bool LoadTvCache<T>([NotNull] FileInfo loadFrom, [NotNull] T cache) where T : MediaCache, iTVSource
         {
             Logger.Info("Loading Cache from: {0}", loadFrom.FullName);
             if (!loadFrom.Exists)
@@ -187,7 +124,7 @@ namespace TVRename
             try
             {
                 XElement x = XElement.Load(loadFrom.FullName);
-                bool r = ProcessSeriesXml(x,cache);
+                bool r = ProcessSeriesXml(x, cache);
                 if (r)
                 {
                     cache.UpdatesDoneOk();
@@ -203,7 +140,7 @@ namespace TVRename
             }
         }
 
-        public static bool LoadMovieCache([NotNull] FileInfo loadFrom, iMovieSource cache)
+        public static bool LoadMovieCache<T>([NotNull] FileInfo loadFrom, T cache) where T : MediaCache, iMovieSource
         {
             Logger.Info("Loading Cache from: {0}", loadFrom.FullName);
             if (!loadFrom.Exists)
@@ -230,7 +167,7 @@ namespace TVRename
             }
         }
 
-        private static bool ProcessMovieXml(XElement x, iMovieSource cache)
+        private static bool ProcessMovieXml<T>(XElement x, T cache) where T:MediaCache, iMovieSource
         {
             try
             {
@@ -244,7 +181,7 @@ namespace TVRename
                     Logger.Error("Could not obtain update time from XML");
                 }
 
-                foreach (CachedMovieInfo si in x.Descendants("Movie").Select(seriesXml => new CachedMovieInfo(seriesXml)))
+                foreach (CachedMovieInfo si in x.Descendants("Movie").Select(seriesXml => new CachedMovieInfo(seriesXml, cache.SourceProvider())))
                 {
                     // The <cachedSeries> returned by GetSeries have
                     // less info than other results from
@@ -252,28 +189,8 @@ namespace TVRename
                     // in a <Series> if we already have some/all
                     // info on it (depending on which one came
                     // first).
-                    cache.Update(si);
+                    cache.AddMovieToCache(si);
                 }
-
-                /*foreach (XElement episodeXml in x.Descendants("Episode"))
-                {
-                    Episode e = new Episode(episodeXml);
-                    if (e.Ok())
-                    {
-                        cache.AddOrUpdateEpisode(e);
-                    }
-                    else
-                    {
-                        Logger.Error($"problem with XML recieved {episodeXml}");
-                    }
-                }
-
-                foreach (XElement banners in x.Descendants("BannersCache"))
-                {
-                    //this wil not be found in a standard response from the TVDB website
-                    //will only be in the response when we are reading from the cache
-                    ProcessXmlBannerCache(banners, cache);
-                }*/
             }
             catch (XmlException e)
             {
@@ -287,13 +204,13 @@ namespace TVRename
             }
             return true;
         }
-    
-        private static bool ProcessSeriesXml([NotNull] XElement x,[NotNull] iTVSource cache)
+
+        private static bool ProcessSeriesXml<T>([NotNull] XElement x, [NotNull] T cache) where T:MediaCache,iTVSource
         {
             // Will have one or more cachedSeries, and episodes
             // all wrapped in <Data> </Data>
 
-            // e.g.: 
+            // e.g.:
             //<Data>
             // <Series>
             //  <id>...</id>
@@ -322,7 +239,7 @@ namespace TVRename
                     Logger.Error("Could not obtain update time from XML");
                 }
 
-                foreach (CachedSeriesInfo si in x.Descendants("Series").Select(seriesXml => new CachedSeriesInfo(seriesXml)))
+                foreach (CachedSeriesInfo si in x.Descendants("Series").Select(seriesXml => new CachedSeriesInfo(seriesXml, TVDoc.ProviderType.libraryDefault)))
                 {
                     // The <cachedSeries> returned by GetSeries have
                     // less info than other results from
@@ -330,7 +247,7 @@ namespace TVRename
                     // in a <Series> if we already have some/all
                     // info on it (depending on which one came
                     // first).
-                    cache.UpdateSeries(si);
+                    cache.AddSeriesToCache(si);
                 }
 
                 foreach (XElement episodeXml in x.Descendants("Episode"))
@@ -350,7 +267,7 @@ namespace TVRename
                 {
                     //this wil not be found in a standard response from the TVDB website
                     //will only be in the response when we are reading from the cache
-                    ProcessXmlBannerCache(banners,cache);
+                    ProcessXmlBannerCache(banners, cache);
                 }
             }
             catch (XmlException e)
@@ -376,13 +293,13 @@ namespace TVRename
             //          <SeriesId>123</SeriesId>
             //          <Banners>
             //              <Banner>
-
+            //NB - this is legacy and will be removed post 2021 - Just to migrate old 'Banner' format to new Image format
             foreach (XElement bannersXml in r.Descendants("BannersItem"))
             {
                 int seriesId = bannersXml.ExtractInt("SeriesId") ?? -1;
 
-                localCache.AddBanners(seriesId,bannersXml.Descendants("Banners").Descendants("Banner")
-                    .Select(banner => new Banner(seriesId, banner)));
+                localCache.GetSeries(seriesId)?.AddBanners(seriesId, bannersXml.Descendants("Banners").Descendants("Banner")
+                    .Select(banner => ShowImage.GenerateFromLegacyBannerXml(seriesId, banner, localCache.SourceProvider())));
             }
         }
     }

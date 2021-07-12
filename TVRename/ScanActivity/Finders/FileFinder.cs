@@ -1,17 +1,18 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Windows.Forms;
 using System.Linq;
-using JetBrains.Annotations;
+using System.Windows.Forms;
+using DirectoryInfo = Alphaleonis.Win32.Filesystem.DirectoryInfo;
 using FileInfo = Alphaleonis.Win32.Filesystem.FileInfo;
 using FileSystemInfo = Alphaleonis.Win32.Filesystem.FileSystemInfo;
 
@@ -19,14 +20,16 @@ namespace TVRename
 {
     internal abstract class FileFinder : Finder
     {
-        protected FileFinder(TVDoc i) : base(i) { }
+        protected FileFinder(TVDoc doc, TVDoc.ScanSettings settings) : base(doc, settings)
+        {
+        }
 
         public override FinderDisplayType DisplayType() => FinderDisplayType.local;
 
         // ReSharper disable once FunctionComplexityOverflow
-        protected bool ReviewFile(ShowItemMissing me, ItemList addTo, FileInfo dce, TVDoc.ScanSettings settings, bool addMergeRules,bool preventMove,bool doExtraFiles,bool useFullPath)
+        protected bool ReviewFile(ShowItemMissing me, ItemList addTo, FileInfo dce, bool addMergeRules, bool preventMove, bool doExtraFiles, bool useFullPath)
         {
-            if (settings.Token.IsCancellationRequested)
+            if (Settings.Token.IsCancellationRequested)
             {
                 return false;
             }
@@ -48,7 +51,7 @@ namespace TVRename
                     return false;
                 }
 
-                (bool identifySuccess,int seasF, int epF, int maxEp) = IdentifyFile(me, dce);
+                (bool identifySuccess, int seasF, int epF, int maxEp) = IdentifyFile(me, dce);
 
                 if (!identifySuccess)
                 {
@@ -68,7 +71,8 @@ namespace TVRename
                     fi = new FileInfo(dce.DirectoryName.EnsureEndsWithSeparator() + me.Filename + dce.Extension);
                 }
 
-                if (dce.FullName != fi.FullName && !FindExistingActionFor(addTo,dce)){
+                if (dce.FullName != fi.FullName && !FindExistingActionFor(addTo, dce))
+                {
                     // don't remove the base search folders
                     bool doTidyup =
                         !TVSettings.Instance.DownloadFolders.Any(folder =>
@@ -94,9 +98,9 @@ namespace TVRename
             return false;
         }
 
-        protected bool ReviewFile(MovieItemMissing me, ItemList addTo, FileInfo dce, TVDoc.ScanSettings settings, bool preventMove, bool doExtraFiles, bool useFullPath)
+        protected bool ReviewFile(MovieItemMissing me, ItemList addTo, FileInfo dce, bool preventMove, bool doExtraFiles, bool useFullPath)
         {
-            if (settings.Token.IsCancellationRequested)
+            if (Settings.Token.IsCancellationRequested)
             {
                 return false;
             }
@@ -105,7 +109,7 @@ namespace TVRename
 
             try
             {
-                if (dce.IgnoreFile() || me.Movie is null )
+                if (dce.IgnoreFile() || me.Movie is null)
                 {
                     return false;
                 }
@@ -118,7 +122,7 @@ namespace TVRename
                     return false;
                 }
 
-                if (me.Show.LengthNameMatch(dce,useFullPath) != MDoc.FilmLibrary.Movies.MaxOrDefault(m=>m.LengthNameMatch(dce, useFullPath),0))
+                if (me.Show.LengthNameMatch(dce, useFullPath) != MDoc.FilmLibrary.Movies.MaxOrDefault(m => m.LengthNameMatch(dce, useFullPath), 0))
                 {
                     int c = 1;
                     return false;
@@ -159,7 +163,7 @@ namespace TVRename
             return false;
         }
 
-        private static (bool  identifysuccess, int foundSeason, int foundEpisode,  int maxEp) IdentifyFile([NotNull] ShowItemMissing me, [NotNull] FileInfo dce)
+        private static (bool identifysuccess, int foundSeason, int foundEpisode, int maxEp) IdentifyFile([NotNull] ShowItemMissing me, [NotNull] FileInfo dce)
         {
             int season = me.MissingEpisode.AppropriateSeasonNumber;
             int epnum = me.MissingEpisode.AppropriateEpNum;
@@ -171,7 +175,7 @@ namespace TVRename
 
             if (regularMatch)
             {
-                return (true, foundSeason, foundEpisode,  maxEp);
+                return (true, foundSeason, foundEpisode, maxEp);
             }
 
             if (me.MissingEpisode.Show.UseSequentialMatch)
@@ -192,7 +196,7 @@ namespace TVRename
                     }
                 }
             }
- 
+
             if (me.MissingEpisode.Show.UseEpNameMatch)
             {
                 if (FinderHelper.FindSeasEpNameCheck(dce, me.MissingEpisode.Show, out foundSeason, out foundEpisode))
@@ -247,7 +251,7 @@ namespace TVRename
             t += matched ? ", matched.  " : ", no match.  ";
             if (matched)
             {
-                t += "Show: " + me.MovieConfig.ShowName  + ".  ";
+                t += "Show: " + me.MovieConfig.ShowName + ".  ";
                 t += "To: " + me.TheFileNoExt;
             }
 
@@ -288,7 +292,7 @@ namespace TVRename
             return new ShowItemMissing(newPE, me.TargetFolder);
         }
 
-        private static bool FindExistingActionFor([NotNull] ItemList addTo,[NotNull] FileSystemInfo fi)
+        private static bool FindExistingActionFor([NotNull] ItemList addTo, [NotNull] FileSystemInfo fi)
         {
             foreach (ActionCopyMoveRename existingFileOperation in addTo.CopyMoveRename)
             {
@@ -301,11 +305,12 @@ namespace TVRename
 
             return false;
         }
-        protected void KeepTogether([NotNull] ItemList actionlist, bool fromLibrary) {
-            KeepTogether(actionlist, fromLibrary, !MDoc.Args.Unattended && !MDoc.Args.Hide,MDoc);
-                }
+        protected void CopySubsFolders([NotNull] ItemList actionlist)
+        {
+            CopySubsFolders(actionlist,  !MDoc.Args.Unattended && !MDoc.Args.Hide, MDoc);
+        }
 
-        public static void KeepTogether([NotNull] ItemList actionlist, bool fromLibrary,bool showErrors, TVDoc d)
+        public static void CopySubsFolders([NotNull] ItemList actionlist, bool showErrors, TVDoc d)
         {
             // for each of the items in rcl, do the same copy/move if for other items with the same
             // base name, but different extensions
@@ -313,20 +318,93 @@ namespace TVRename
 
             foreach (ActionCopyMoveRename action in actionlist.CopyMoveRename)
             {
-                KeepTogetherForItem(actionlist, fromLibrary, action, extras,showErrors,d);
+                IEnumerable<DirectoryInfo> suitableSubFolders = action.SourceDirectory.GetDirectories().Where(IsSubsFolder);
+                foreach (DirectoryInfo subtitleFolder in suitableSubFolders)
+                {
+                    if (action.Episode != null)
+                    {
+                        //Does not really make sense for shows (multiple episodes in one directory).
+                        //If we only have one file we can rename it
+                        List<FileInfo> subFiles = subtitleFolder.GetFiles().Where(IsSubTitleFile).ToList();
+                        if (subFiles.Count == 1)
+                        {
+                            FileInfo fi = subFiles.Single();
+                            string newName = action.DestinationBaseName + fi.Extension;
+                            ActionCopyMoveRename newitem =
+                                new ActionCopyMoveRename(action.Operation, fi,
+                                    FileHelper.FileInFolder(action.To.Directory, newName), action.SourceEpisode, true,
+                                    null, d);
+
+                            extras.Add(newitem);
+                        }
+                    }
+                    else
+                    {
+                        bool hasSubtitleFiles = subtitleFolder.GetFiles().Any(IsSubTitleFile);
+
+                        if (!hasSubtitleFiles)
+                        {
+                            continue;
+                        }
+
+                        string newlocation = Path.Combine(action.DestinationFolder, subtitleFolder.Name);
+
+                        if (newlocation == subtitleFolder.FullName)
+                        {
+                            continue;
+                        }
+
+                        ActionMoveRenameDirectory newitem =
+                            new ActionMoveRenameDirectory(subtitleFolder.FullName, newlocation, action.Movie!);
+
+                        extras.Add(newitem);
+                    }
+                }
             }
 
             UpdateActionList(actionlist, extras);
         }
 
-        private static void KeepTogetherForItem(ItemList actionlist, bool fromLibrary, [NotNull] ActionCopyMoveRename action, ItemList extras,bool showErrors, TVDoc d)
+        private static bool IsSubTitleFile(FileInfo file)
+        {
+            return TVSettings.Instance.subtitleExtensionsArray.Contains(file.Extension);
+        }
+
+        private static bool IsSubsFolder(DirectoryInfo folder)
+        {
+            return TVSettings.Instance.SubsFolderNames.Any(x=>string.Equals(x,folder.Name,StringComparison.CurrentCultureIgnoreCase));
+        }
+
+        protected void KeepTogether([NotNull] ItemList actionlist, bool fromLibrary)
+        {
+            KeepTogether(actionlist, fromLibrary, !MDoc.Args.Unattended && !MDoc.Args.Hide, MDoc);
+        }
+
+        public static void KeepTogether([NotNull] ItemList actionlist, bool fromLibrary, bool showErrors, TVDoc d)
+        {
+            // for each of the items in rcl, do the same copy/move if for other items with the same
+            // base name, but different extensions
+            ItemList extras = new ItemList();
+
+            foreach (ActionCopyMoveRename action in actionlist.CopyMoveRename)
+            {
+                KeepTogetherForItem(actionlist, fromLibrary, action, extras, showErrors, d);
+            }
+
+            UpdateActionList(actionlist, extras);
+        }
+
+        private static void KeepTogetherForItem(ItemList actionlist, bool fromLibrary, [NotNull] ActionCopyMoveRename action, ItemList extras, bool showErrors, TVDoc d)
         {
             try
             {
                 string basename = action.From.RemoveExtension();
                 string toname = action.To.RemoveExtension();
-                
-                FileInfo[] flist = action.From.Directory.GetFiles(basename + ".*");
+
+                //We have the arbitary >9 limit to make sure that a file with a short name does not drag a whole load of other files with it
+                FileInfo[] flist = basename.Length >9
+                    ? action.From.Directory.GetFiles(basename + "*.*")
+                    : action.From.Directory.GetFiles(basename + ".*");
                 foreach (FileInfo fi in flist)
                 {
                     //check to see whether the file is one of the types we do/don't want to include
@@ -344,13 +422,13 @@ namespace TVRename
 
                     string newName = GetFilename(fi.Name, basename, toname);
 
-                    ActionCopyMoveRename newitem = (action.Episode is null) ?
+                    ActionCopyMoveRename newitem = action.Episode is null ?
                         new ActionCopyMoveRename(action.Operation, fi,
                             FileHelper.FileInFolder(action.To.Directory, newName), action.Movie!, false,
                             null, d)
                         : new ActionCopyMoveRename(action.Operation, fi,
                         FileHelper.FileInFolder(action.To.Directory, newName), action.SourceEpisode, false,
-                        null,d); // tidy up on main action, not this
+                        null, d); // tidy up on main action, not this
 
                     // check this item isn't already in our to-do list
                     if (ActionListContains(actionlist, newitem))
@@ -425,7 +503,7 @@ namespace TVRename
             // sort based on source file, and destination drive, putting last if destdrive == sourcedrive
             newList.Sort(new ActionItemSorter());
 
-            // sort puts all the CopyMoveRenames together				
+            // sort puts all the CopyMoveRenames together
             // then set the last of each source file to be a move
             for (int i = 0; i < newList.Count; i++)
             {
@@ -482,13 +560,13 @@ namespace TVRename
             return actionlist.CopyMoveRename.Any(cmAction => cmAction.SameSource(newItem));
         }
 
-        protected void ProcessMissingItem(TVDoc.ScanSettings settings, ItemList newList, ItemList toRemove, ItemMissing me, ItemList thisRound, [NotNull] List<FileInfo> matchedFiles,bool useFullPath)
+        protected void ProcessMissingItem(ItemList newList, ItemList toRemove, ItemMissing me, ItemList thisRound, [NotNull] List<FileInfo> matchedFiles, bool useFullPath)
         {
             if (matchedFiles.Count == 1)
             {
-                if (!OtherActionsMatch(matchedFiles[0], me, settings,useFullPath))
+                if (!OtherActionsMatch(matchedFiles[0], me, useFullPath))
                 {
-                    if (!FinderHelper.BetterShowsMatch(matchedFiles[0], me.Show,useFullPath,MDoc))
+                    if (!FinderHelper.BetterShowsMatch(matchedFiles[0], me.Show, useFullPath, MDoc))
                     {
                         toRemove.Add(me);
                         newList.AddRange(thisRound);
@@ -563,7 +641,7 @@ namespace TVRename
             return bestMatchedFiles;
         }
 
-        private bool OtherActionsMatch(FileInfo matchedFile, Item me, TVDoc.ScanSettings settings,bool useFullPath)
+        private bool OtherActionsMatch(FileInfo matchedFile, Item me, bool useFullPath)
         //This is used to check whether the selected file may match any other files we are looking for
         {
             foreach (ShowItemMissing testMissingAction in ActionList.MissingEpisodes.ToList())
@@ -573,7 +651,7 @@ namespace TVRename
                     continue;
                 }
 
-                if (ReviewFile(testMissingAction, new ItemList(), matchedFile, settings,false,false,false,useFullPath))
+                if (ReviewFile(testMissingAction, new ItemList(), matchedFile, false, false, false, useFullPath))
                 {
                     //We have 2 options that match  me and testAction - See whether one is subset of the other
                     if (me.Episode != null && me.Episode.Show.ShowName.Contains(testMissingAction.MissingEpisode.Show.ShowName))

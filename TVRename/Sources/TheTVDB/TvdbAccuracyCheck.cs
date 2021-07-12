@@ -1,7 +1,7 @@
-using System;
-using System.Collections.Generic;
 using JetBrains.Annotations;
 using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
 
 namespace TVRename.TheTVDB
 {
@@ -20,10 +20,9 @@ namespace TVRename.TheTVDB
 
         public void ServerAccuracyCheck([NotNull] CachedSeriesInfo si)
         {
-            int tvdbId = si.TvdbCode;
             try
             {
-                CachedSeriesInfo newSi = lc.DownloadSeriesInfo(tvdbId, "en", false);
+                CachedSeriesInfo newSi = lc.DownloadSeriesInfo(si, new Locale(), false);
                 if (newSi.SrvLastUpdated != si.SrvLastUpdated)
                 {
                     Issues.Add(
@@ -32,7 +31,7 @@ namespace TVRename.TheTVDB
                     EnsureUpdated(si);
                 }
 
-                List<JObject> eps = lc.GetEpisodes(tvdbId, "en");
+                List<JObject> eps = lc.GetEpisodes(si.TvdbId, new Locale());
                 List<long> serverEpIds = new List<long>();
 
                 if (eps != null)
@@ -65,7 +64,7 @@ namespace TVRename.TheTVDB
             }
             catch (MediaNotFoundException)
             {
-                Issues.Add($"Failed to compare {si.Name} as it no longer exists on TVDB {tvdbId}.");
+                Issues.Add($"Failed to compare {si.Name} as it no longer exists on TVDB {si.TvdbId}.");
             }
         }
 

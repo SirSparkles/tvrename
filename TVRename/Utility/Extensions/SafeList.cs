@@ -1,8 +1,8 @@
+using JetBrains.Annotations;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -36,6 +36,7 @@ namespace TVRename
 
         public bool IsReadOnly => false;
 
+        [CanBeNull]
         public T this[int index]
         {
             get
@@ -90,6 +91,7 @@ namespace TVRename
                 inner.Sort(item);
             }
         }
+
         public void AddRange(IEnumerable<T> item)
         {
             lock (@lock)
@@ -105,6 +107,7 @@ namespace TVRename
                 AddRange(items);
             }
         }
+
         public void Clear()
         {
             lock (@lock)

@@ -1,29 +1,28 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
+using Alphaleonis.Win32.Filesystem;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Alphaleonis.Win32.Filesystem;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
     internal class FindNewItemsInDownloadFolders : ScanActivity
     {
-        public FindNewItemsInDownloadFolders(TVDoc doc) : base(doc)
+        public FindNewItemsInDownloadFolders(TVDoc doc, TVDoc.ScanSettings settings) : base(doc, settings)
         {
         }
-        
+
         protected override string CheckName() => "Looked in the Search Folders for any new series/movies that need to be added to the library";
 
-        protected override void DoCheck(SetProgressDelegate prog,
-            TVDoc.ScanSettings settings)
+        protected override void DoCheck(SetProgressDelegate prog)
         {
             //for each directory in settings directory
             //for each file in directory
@@ -37,39 +36,31 @@ namespace TVRename
             }
 
             //Don't support unattended mode
-            if (settings.Unattended || settings.Hidden)
+            if (Settings.Unattended || Settings.Hidden)
             {
                 LOGGER.Info("Not looking for new media as app is unattended");
                 return;
             }
 
             IEnumerable<FileInfo> possibleShowNames = GetPossibleShowNameStrings();
-            List<MediaConfiguration> addedShows = FinderHelper.FindMedia(possibleShowNames,MDoc,settings.Owner);
+            List<MediaConfiguration> addedShows = FinderHelper.FindMedia(possibleShowNames, MDoc, Settings.Owner);
 
-            IEnumerable<ShowConfiguration> addedTvShows = addedShows.OfType<ShowConfiguration>();
+            List<ShowConfiguration> addedTvShows = addedShows.OfType<ShowConfiguration>().ToList();
             if (addedTvShows.Any())
             {
-                MDoc.TvLibrary.AddRange(addedTvShows);
-                MDoc.TvAddedOrEdited(true, false, false, settings.Owner, addedTvShows);
+                MDoc.Add(addedTvShows);
+                MDoc.TvAddedOrEdited(true, false, false, Settings.Owner, addedTvShows);
                 //add each new show into the shows being scanned
-                foreach (ShowConfiguration si in addedTvShows)
-                {
-                    settings.Shows.Add(si);
-                }
+                Settings.Shows.AddRange(addedTvShows);
                 LOGGER.Info("Added new shows called: {0}", addedTvShows.Select(s => s.ShowName).ToCsv());
             }
 
-
-            IEnumerable<MovieConfiguration> addedMovies = addedShows.OfType<MovieConfiguration>();
+            List<MovieConfiguration> addedMovies = addedShows.OfType<MovieConfiguration>().ToList();
             if (addedMovies.Any())
             {
-                MDoc.FilmLibrary.AddRange(addedMovies);
-                MDoc.MoviesAddedOrEdited(true, false, false, settings.Owner, addedMovies);
-
-                foreach (MovieConfiguration si in addedMovies)
-                {
-                    settings.Movies.Add(si);
-                }
+                MDoc.Add(addedMovies);
+                MDoc.MoviesAddedOrEdited(true, false, false, Settings.Owner, addedMovies);
+                Settings.Movies.AddRange(addedMovies);
                 LOGGER.Info("Added new movies called: {0}", addedMovies.Select(s => s.ShowName).ToCsv());
             }
         }
@@ -90,7 +81,7 @@ namespace TVRename
                 try
                 {
                     string[] array = Directory.GetFiles(dirPath, "*", System.IO.SearchOption.AllDirectories);
-                    IOrderedEnumerable<string>? orderedFiles = from name in array orderby name select name;
+                    IOrderedEnumerable<string> orderedFiles = array.OrderBy(name => name);
                     foreach (string filePath in orderedFiles)
                     {
                         if (!File.Exists(filePath))

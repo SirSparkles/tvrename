@@ -1,10 +1,10 @@
+using Alphaleonis.Win32.Filesystem;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
-using Alphaleonis.Win32.Filesystem;
-using JetBrains.Annotations;
 
 namespace TVRename
 {
@@ -42,7 +42,7 @@ namespace TVRename
             UseCustomNamingFormat = false;
             UseCustomFolderNameFormat = false;
             UseCustomRegion = false;
-            
+
             ManualLocations = new List<string>();
             CustomNamingFormat = string.Empty;
             CustomFolderNameFormat = string.Empty;
@@ -58,14 +58,14 @@ namespace TVRename
             DoMissingCheck = TVSettings.Instance.DefMovieDoMissingCheck;
             UseAutomaticFolders = TVSettings.Instance.DefMovieUseutomaticFolders;
             AutomaticFolderRoot = TVSettings.Instance.DefMovieUseDefaultLocation ? TVSettings.Instance.DefMovieDefaultLocation ?? string.Empty : string.Empty;
-            
         }
 
-        public String ShowNameWithYear => $"{ShowName} ({CachedMovie?.Year})";
+        public string ShowNameWithYear => $"{ShowName} ({CachedMovie?.Year})";
+
         public MovieConfiguration(int code, TVDoc.ProviderType type) : this()
         {
             ConfigurationProvider = type;
-            SetId(type,code);
+            SetId(type, code);
         }
 
         public MovieConfiguration([NotNull] XElement xmlSettings) : this()
@@ -73,6 +73,8 @@ namespace TVRename
             UseCustomShowName = xmlSettings.ExtractBool("UseCustomShowName", false);
             UseCustomLanguage = xmlSettings.ExtractBool("UseCustomLanguage", false);
             CustomLanguageCode = xmlSettings.ExtractString("CustomLanguageCode");
+            UseCustomRegion = xmlSettings.ExtractBool("UseCustomRegion", false);
+            CustomRegionCode = xmlSettings.ExtractString("CustomRegionCode");
             CustomShowName = xmlSettings.ExtractString("CustomShowName");
             TvdbCode = xmlSettings.ExtractInt("TVDBID", -1);
             TVmazeCode = xmlSettings.ExtractInt("TVMAZEID", -1);
@@ -80,7 +82,8 @@ namespace TVRename
             DoRename = xmlSettings.ExtractBool("DoRename", true);
             DoMissingCheck = xmlSettings.ExtractBool("DoMissingCheck", true);
             ConfigurationProvider = GetConfigurationProviderType(xmlSettings.ExtractInt("ConfigurationProvider"));
-
+            LastName = xmlSettings.ExtractStringOrNull("LastName");
+            ImdbCode = xmlSettings.ExtractStringOrNull("ImdbCode");
             UseManualLocations = xmlSettings.ExtractBool("UseManualLocations", false);
             UseAutomaticFolders = xmlSettings.ExtractBool("useAutomaticFolders", true);
             AutomaticFolderRoot = xmlSettings.ExtractString("automaticFolderRoot");
@@ -93,30 +96,33 @@ namespace TVRename
             SetupLocations(xmlSettings);
         }
 
-        public MovieConfiguration(PossibleNewMovie movie): this()
+        public MovieConfiguration(PossibleNewMovie movie) : this()
         {
             if (movie.CodeUnknown)
             {
                 return;
             }
-            switch (movie.Provider)
+            switch (movie.SourceProvider)
             {
                 case TVDoc.ProviderType.TheTVDB:
                     TvdbCode = movie.ProviderCode;
                     break;
+
                 case TVDoc.ProviderType.TMDB:
                     TmdbCode = movie.ProviderCode;
                     break;
+
                 default:
                     throw new ArgumentOutOfRangeException();
             }
 
-            ConfigurationProvider = TVSettings.Instance.DefaultMovieProvider == movie.Provider
+            ConfigurationProvider = TVSettings.Instance.DefaultMovieProvider == movie.SourceProvider
                 ? TVDoc.ProviderType.libraryDefault
-                : movie.Provider;
+                : movie.SourceProvider;
         }
 
         protected override MediaType GetMediaType() => MediaType.movie;
+
         protected override Dictionary<int, SafeList<string>> AllFolderLocations(bool manualToo, bool checkExist)
         {
             Dictionary<int, SafeList<string>> fld = new Dictionary<int, SafeList<string>>
@@ -129,7 +135,6 @@ namespace TVRename
                 foreach (string kvp in ManualLocations.ToList())
                 {
                     fld[0].Add(kvp.TrimSlash());
-                    
                 }
             }
 
@@ -157,7 +162,7 @@ namespace TVRename
 
             if (UseCustomFolderNameFormat)
             {
-                return AutomaticFolderRoot.EnsureEndsWithSeparator() + CustomMovieName.NameFor(this,CustomFolderNameFormat );
+                return AutomaticFolderRoot.EnsureEndsWithSeparator() + CustomMovieName.NameFor(this, CustomFolderNameFormat);
             }
 
             return AutomaticFolderRoot.EnsureEndsWithSeparator() + CustomMovieName.NameFor(this, TVSettings.Instance.MovieFolderFormat);
@@ -183,10 +188,10 @@ namespace TVRename
 
             if (UseCustomFolderNameFormat)
             {
-                return AutomaticFolderRoot.EnsureEndsWithSeparator() + CustomMovieName.NameFor(this, CustomFolderNameFormat,year);
+                return AutomaticFolderRoot.EnsureEndsWithSeparator() + CustomMovieName.NameFor(this, CustomFolderNameFormat, year);
             }
 
-            return AutomaticFolderRoot.EnsureEndsWithSeparator() + CustomMovieName.NameFor(this, TVSettings.Instance.MovieFolderFormat,year);
+            return AutomaticFolderRoot.EnsureEndsWithSeparator() + CustomMovieName.NameFor(this, TVSettings.Instance.MovieFolderFormat, year);
         }
 
         private void SetupLocations([NotNull] XElement xmlSettings)
@@ -208,18 +213,9 @@ namespace TVRename
 
         protected override TVDoc.ProviderType DefaultProvider() => TVSettings.Instance.DefaultMovieProvider;
 
-        private static MediaCache LocalCache(TVDoc.ProviderType t)
-        {
-            return t switch
-            {
-                TVDoc.ProviderType.TVmaze => TVmaze.LocalCache.Instance,
-                TVDoc.ProviderType.TheTVDB => TheTVDB.LocalCache.Instance,
-                TVDoc.ProviderType.TMDB => TMDB.LocalCache.Instance,
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        }
+        private static MediaCache LocalCache(TVDoc.ProviderType provider) => TVDoc.GetMediaCache(provider);
 
-        public CachedMovieInfo? CachedMovie => (CachedMovieInfo) CachedData;
+        public CachedMovieInfo? CachedMovie => (CachedMovieInfo)CachedData;
 
         public IEnumerable<string> Locations => AllFolderLocations(true, false).Values.SelectMany(x => x);
 
@@ -247,10 +243,14 @@ namespace TVRename
             writer.WriteElement("CustomShowName", CustomShowName);
             writer.WriteElement("UseCustomLanguage", UseCustomLanguage);
             writer.WriteElement("CustomLanguageCode", CustomLanguageCode);
+            writer.WriteElement("UseCustomRegion", UseCustomRegion);
+            writer.WriteElement("CustomRegionCode", CustomRegionCode);
             writer.WriteElement("TVDBID", TvdbCode);
             writer.WriteElement("TVMAZEID", TVmazeCode);
             writer.WriteElement("TMDBID", TmdbCode);
             writer.WriteElement("DoRename", DoRename);
+            writer.WriteElement("ImdbCode", ImdbCode);
+            writer.WriteElement("LastName", LastName);
             writer.WriteElement("DoMissingCheck", DoMissingCheck);
             writer.WriteElement("ConfigurationProvider", (int)ConfigurationProvider);
 
@@ -272,12 +272,5 @@ namespace TVRename
         }
 
         public IEnumerable<string> AutomaticLocations() => AllFolderLocations(false, false).Values.SelectMany(x => x);
-
-        public SeriesSpecifier SeriesSpecifier()
-        {
-            return new SeriesSpecifier(TvdbCode, TVmazeCode, TmdbCode, UseCustomLanguage,
-                CustomLanguageCode, ShowName, Provider, CachedMovie?.Imdb, MediaType.movie);
-        }
-
     }
 }

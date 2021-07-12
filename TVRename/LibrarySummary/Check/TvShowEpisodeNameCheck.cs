@@ -1,4 +1,3 @@
-using System;
 using JetBrains.Annotations;
 
 namespace TVRename
@@ -17,6 +16,7 @@ namespace TVRename
         {
             Show.UseCustomNamingFormat = false;
         }
+
         public override string CheckName => "[TV] Use Custom Folder Name Format";
     }
 }

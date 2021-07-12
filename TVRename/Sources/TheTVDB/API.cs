@@ -1,12 +1,12 @@
+using JetBrains.Annotations;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using NLog;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Cache;
-using JetBrains.Annotations;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using NLog;
 
 namespace TVRename.TheTVDB
 {
@@ -18,6 +18,7 @@ namespace TVRename.TheTVDB
 
         // ReSharper disable once ConvertToConstant.Local
         private static readonly string WebsiteRoot = "https://thetvdb.com";
+
         // ReSharper disable once ConvertToConstant.Local
         private static readonly string WebsiteImageRoot = "https://artworks.thetvdb.com";
 
@@ -37,6 +38,11 @@ namespace TVRename.TheTVDB
 
             string mirr = WebsiteImageRoot;
 
+            if (url.StartsWith(mirr, StringComparison.OrdinalIgnoreCase))
+            {
+                return url;
+            }
+
             if (url.StartsWith("/", StringComparison.Ordinal))
             {
                 url = url.RemoveFirstCharacter();
@@ -49,7 +55,7 @@ namespace TVRename.TheTVDB
 
             return url.StartsWith("banners/", StringComparison.Ordinal) ? mirr + url : mirr + "banners/" + url;
         }
-     
+
         public static byte[] GetTvdbDownload([NotNull] string url, bool forceReload)
         {
             string theUrl = GetImageURL(url);
@@ -92,6 +98,11 @@ namespace TVRename.TheTVDB
             return $"{WebsiteRoot}/?tab=series&id={seriesId}";
         }
 
+        public static string WebsiteMovieUrl(int id)
+        {
+            return $"{WebsiteRoot}/?tab=movie&id={id}";
+        }
+
         [NotNull]
         // ReSharper disable once MemberCanBePrivate.Global
         public static string WebsiteShowUrl(string slug)
@@ -125,8 +136,10 @@ namespace TVRename.TheTVDB
             {
                 case ProcessedSeason.SeasonType.dvd:
                     return $"{WebsiteRoot}/series/{seriesId}/seasons/dvd/{seasonNumber}";
+
                 case ProcessedSeason.SeasonType.aired:
                     return $"{WebsiteRoot}/series/{seriesId}/seasons/official/{seasonNumber}";
+
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type), type, null);
             }
@@ -141,8 +154,10 @@ namespace TVRename.TheTVDB
             {
                 case ProcessedSeason.SeasonType.dvd:
                     return $"{WebsiteRoot}/series/{slug}/seasons/dvd/{seasonNumber}";
+
                 case ProcessedSeason.SeasonType.aired:
                     return $"{WebsiteRoot}/series/{slug}/seasons/official/{seasonNumber}";
+
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type), type, null);
             }
@@ -156,22 +171,20 @@ namespace TVRename.TheTVDB
             //return $"{WebsiteRoot}/?tab=episode&seriesid={seriesId}&seasonid={seasonId}&id={episodeId}";
 
             //New format: https://thetvdb.com/series/the-terror/episodes/7124969
-            return episodeId>0?$"{WebsiteRoot}/series/{seriesId}/episodes/{episodeId}":string.Empty;
+            return episodeId > 0 ? $"{WebsiteRoot}/series/{seriesId}/episodes/{episodeId}" : string.Empty;
         }
 
         [NotNull]
         // ReSharper disable once MemberCanBePrivate.Global
         public static string WebsiteEpisodeUrl(string slug, int episodeId)
         {
-            return episodeId > 0 ? $"{WebsiteRoot}/series/{slug}/episodes/{episodeId}":string.Empty;
+            return episodeId > 0 ? $"{WebsiteRoot}/series/{slug}/episodes/{episodeId}" : string.Empty;
         }
 
-        [NotNull]
-        private static JObject JsonHttpGetRequest(string url, Dictionary<string, string>? parameters, TokenProvider? authToken, bool retry) =>
+        private static JObject? JsonHttpGetRequest(string url, Dictionary<string, string>? parameters, TokenProvider? authToken, bool retry) =>
             JsonHttpGetRequest(url, parameters, authToken, string.Empty, retry);
 
-        [NotNull]
-        private static JObject JsonHttpGetRequest(string url, Dictionary<string, string>? parameters, TokenProvider? authToken, string lang, bool retry)
+        private static JObject? JsonHttpGetRequest(string url, Dictionary<string, string>? parameters, TokenProvider? authToken, string lang, bool retry)
         {
             TimeSpan pauseBetweenFailures = TimeSpan.FromSeconds(2);
             string fullUrl = url + HttpHelper.GetHttpParameters(parameters);
@@ -180,13 +193,12 @@ namespace TVRename.TheTVDB
 
             if (retry)
             {
-                if (authToken !=null)
+                if (authToken != null)
                 {
                     HttpHelper.RetryOnException(3, pauseBetweenFailures, fullUrl,
                     exception => true,
                     () => { response = HttpRequest("GET", fullUrl, null, "application/json", authToken, lang); },
                     authToken.EnsureValid);
-
                 }
                 else
                 {
@@ -212,7 +224,7 @@ namespace TVRename.TheTVDB
             catch (JsonReaderException)
             {
                 const string ERROR_ON_END = @"{""Error"":""Not authorized""}";
-                if (response.EndsWith(ERROR_ON_END, StringComparison.Ordinal) && response.Length>ERROR_ON_END.Length)
+                if (response.EndsWith(ERROR_ON_END, StringComparison.Ordinal) && response.Length > ERROR_ON_END.Length)
                 {
                     return JObject.Parse(response.TrimEnd(ERROR_ON_END));
                 }
@@ -221,18 +233,11 @@ namespace TVRename.TheTVDB
         }
 
         [NotNull]
-        public static JObject GetLanguages()
-        {
-            return JsonHttpGetRequest(TokenProvider.TVDB_API_URL + "/languages", null, TokenProvider, true);
-        }
-
-        [NotNull]
         private static string HttpRequest([NotNull] string method, [NotNull] string url, string? json, string contentType,
             TokenProvider? authToken, string lang = "")
             => HttpHelper.HttpRequest(method, url, json, contentType, authToken?.GetToken(), lang);
 
-        [NotNull]
-        public static JObject GetShowUpdatesSince(long time, string lang)
+        public static JObject? GetShowUpdatesSince(long time, string lang)
         {
             string uri = TVSettings.Instance.TvdbVersion == ApiVersion.v4
                 ? TokenProvider.TVDB_API_URL + "/updates"
@@ -247,8 +252,7 @@ namespace TVRename.TheTVDB
                 TokenProvider, lang, true);
         }
 
-        [NotNull]
-        public static JObject GetSeriesEpisodes(int seriesId, string languageCode, int pageNumber=0)
+        public static JObject? GetSeriesEpisodes(int seriesId, string languageCode, int pageNumber = 0)
         {
             string episodeUri = $"{TokenProvider.TVDB_API_URL}/series/{seriesId}/episodes";
             return JsonHttpGetRequest(episodeUri,
@@ -256,8 +260,7 @@ namespace TVRename.TheTVDB
                 TokenProvider, languageCode, true);
         }
 
-        [NotNull]
-        public static JObject GetSeriesActors(int seriesId)
+        public static JObject? GetSeriesActors(int seriesId)
         {
             return JsonHttpGetRequest($"{TokenProvider.TVDB_API_URL}/series/{seriesId}/actors",
                 null, TokenProvider, false);
@@ -265,10 +268,10 @@ namespace TVRename.TheTVDB
 
         [NotNull]
         internal static string BuildUrl(int apiKey, string lang)
-            //would rather make this private to hide api key from outside world
-            //https://forum.kodi.tv/showthread.php?tid=323588
-            //says that we need a format like this:
-            //https://api.thetvdb.com/login?{&quot;apikey&quot;:&quot;((API-KEY))&quot;,&quot;id&quot;:((ID))}|Content-Type=application/json
+        //would rather make this private to hide api key from outside world
+        //https://forum.kodi.tv/showthread.php?tid=323588
+        //says that we need a format like this:
+        //https://api.thetvdb.com/login?{&quot;apikey&quot;:&quot;((API-KEY))&quot;,&quot;id&quot;:((ID))}|Content-Type=application/json
         {
             return $"{TokenProvider.TVDB_API_URL}/login?"
                    + "{'apikey':'" + TokenProvider.TVDB_API_KEY + "','id':" + apiKey + "}"
@@ -279,21 +282,21 @@ namespace TVRename.TheTVDB
         public static IEnumerable<string> GetImageTypes(int code, string requestedLanguageCode)
         {
             string uriImages = $"{TokenProvider.TVDB_API_URL}/series/{code}/images";
-            
+
             try
             {
-                JObject jsonEpisodeSearchResponse = JsonHttpGetRequest(
+                JObject? jsonEpisodeSearchResponse = JsonHttpGetRequest(
                     uriImages, null, TokenProvider,
                     requestedLanguageCode, false);
 
-                JObject a = (JObject)jsonEpisodeSearchResponse["data"];
+                JObject? a = (JObject)jsonEpisodeSearchResponse?["data"];
 
                 if (a != null)
                 {
                     List<string> imageTypes = new List<string>();
                     foreach (KeyValuePair<string, JToken> imageType in a)
                     {
-                        if ((int) imageType.Value > 0)
+                        if ((int)imageType.Value > 0)
                         {
                             imageTypes.Add(imageType.Key);
                         }
@@ -314,33 +317,32 @@ namespace TVRename.TheTVDB
             return new List<string>();
         }
 
-        [NotNull]
-        public static JObject SearchTvShow(string text, string defaultLanguageCode)
+        public static JObject? SearchTvShow(string text, string defaultLanguageCode)
         {
             string uri = TokenProvider.TVDB_API_URL + "/search/series";
             return JsonHttpGetRequest(uri, new Dictionary<string, string> { { "name", text } }, TokenProvider, defaultLanguageCode, false);
         }
 
-        public static JObject SearchV4(string text, string defaultLanguageCode,MediaConfiguration.MediaType media)
+        public static JObject? SearchV4(string text, string defaultLanguageCode, MediaConfiguration.MediaType media)
         {
             string uri = TokenProvider.TVDB_API_URL + "/search";
             return media switch
             {
                 MediaConfiguration.MediaType.tv => JsonHttpGetRequest(uri,
-                    new Dictionary<string, string> {{"q", text}, {"type", "series"}}, TokenProvider,
+                    new Dictionary<string, string> { { "q", text }, { "type", "series" } }, TokenProvider,
                     defaultLanguageCode, false),
                 MediaConfiguration.MediaType.movie => JsonHttpGetRequest(uri,
-                    new Dictionary<string, string> {{"q", text}, {"type", "movie"}}, TokenProvider, defaultLanguageCode,
+                    new Dictionary<string, string> { { "q", text }, { "type", "movie" } }, TokenProvider, defaultLanguageCode,
                     false),
                 MediaConfiguration.MediaType.both => JsonHttpGetRequest(uri,
-                    new Dictionary<string, string> {{"q", text}}, TokenProvider, defaultLanguageCode, false),
+                    new Dictionary<string, string> { { "q", text } }, TokenProvider, defaultLanguageCode, false),
                 _ => throw new ArgumentOutOfRangeException(nameof(media), media, null)
             };
         }
 
         public static bool TvdbIsUp()
         {
-            JObject jsonResponse;
+            JObject? jsonResponse;
             try
             {
                 //Deliberately send no authToken, so that it should fail if it's up
@@ -365,7 +367,7 @@ namespace TVRename.TheTVDB
                 return false;
             }
 
-            return jsonResponse.HasValues;
+            return jsonResponse?.HasValues ?? false;
         }
 
         [NotNull]
@@ -386,7 +388,7 @@ namespace TVRename.TheTVDB
                 }
                 catch (WebException webEx)
                 {
-                    Logger.LogWebException($"Looking for {imageType} images (in {languageCode}), but none found for seriesId {code}:",webEx);
+                    Logger.LogWebException($"Looking for {imageType} images (in {languageCode}), but none found for seriesId {code}:", webEx);
                 }
                 catch (IOException ioe)
                 {
@@ -397,8 +399,7 @@ namespace TVRename.TheTVDB
             return returnList;
         }
 
-        [NotNull]
-        public static JObject GetSeries(int code, string requestedLanguageCode)
+        public static JObject? GetSeries(int code, string requestedLanguageCode)
         {
             string uri = TokenProvider.TVDB_API_URL + "/series/" + code;
             return JsonHttpGetRequest(uri, null, TokenProvider, requestedLanguageCode, true);
@@ -407,19 +408,87 @@ namespace TVRename.TheTVDB
         public static JObject GetSeriesV4(int code, string requestedLanguageCode)
         {
             string uri = $"{TokenProvider.TVDB_API_URL}/series/{code}/extended";
-            return JsonHttpGetRequest(uri, null, TokenProvider, requestedLanguageCode, true);
+            return GetUrl(uri, requestedLanguageCode);
         }
 
-        [NotNull]
-        public static JObject GetEpisode(int episodeId, string requestLangCode)
+        public static JObject? GetEpisode(int episodeId, string requestLangCode)
         {
             string uri = $"{TokenProvider.TVDB_API_URL}/episodes/{episodeId}";
             return JsonHttpGetRequest(uri, null, TokenProvider, requestLangCode, true);
         }
 
-        public static void Login()
+        public static void Login(bool forceReconect)
         {
+            if (forceReconect)
+            {
+                TokenProvider.Reset();
+            }
             TokenProvider.EnsureValid();
+        }
+
+        public static JObject? GetMovie(int code, string requestedLanguageCode)
+        {
+            string uri = TokenProvider.TVDB_API_URL + "/movies/" + code;
+            return JsonHttpGetRequest(uri, null, TokenProvider, requestedLanguageCode, true);
+        }
+
+        public static JObject GetMovieV4(int code, string requestedLanguageCode)
+        {
+            string uri = $"{TokenProvider.TVDB_API_URL}/movies/{code}/extended";
+            return GetUrl(uri, requestedLanguageCode);
+        }
+
+        public static JObject GetSeasonEpisodesV4(int showId, int seasonId, string requestedLanguageCode)
+        {
+            string uri = $"{TokenProvider.TVDB_API_URL}/seasons/{seasonId}/extended";
+            return GetUrl(uri, requestedLanguageCode);
+        }
+
+        public static JObject GetSeriesTranslationsV4(int code, string requestedLanguageCode)
+        {
+            string uri = $"{TokenProvider.TVDB_API_URL}/series/{code}/translations/{requestedLanguageCode}";
+            return GetUrl(uri, requestedLanguageCode);
+        }
+
+        public static JObject GetEpisodeTranslationsV4(int code, string requestedLanguageCode)
+        {
+            string uri = $"{TokenProvider.TVDB_API_URL}/episodes/{code}/translations/{requestedLanguageCode}";
+            return GetUrl(uri, requestedLanguageCode);
+        }
+
+        public static JObject GetMovieTranslationsV4(int code, string requestedLanguageCode)
+        {
+            string uri = $"{TokenProvider.TVDB_API_URL}/movies/{code}/translations/{requestedLanguageCode}";
+            return GetUrl(uri, requestedLanguageCode);
+        }
+
+        private static JObject GetUrl(string uri, string requestedLanguageCode)
+        {
+            try
+            {
+                Logger.Trace($"   Downloading {uri}");
+                return JsonHttpGetRequest(uri, null, TokenProvider, requestedLanguageCode, true) ?? throw new SourceConnectivityException($"Looking for {uri} images (in {requestedLanguageCode})");
+            }
+            catch (WebException webEx)
+            {
+                Logger.LogWebException($"Looking for {uri} images (in {requestedLanguageCode}), but got WebException:", webEx);
+            }
+            catch (IOException ioe)
+            {
+                Logger.Warn($"Looking for {uri} images (in {requestedLanguageCode}), but got: {ioe.LoggableDetails()}");
+            }
+
+            throw new SourceConnectivityException($"Looking for {uri} images (in {requestedLanguageCode})");
+        }
+
+        public static JObject ImageTypesV4()
+        {
+            return GetUrl("https://api4.thetvdb.com/v4/artwork/types", "en");
+        }
+
+        public static string WebsiteMovieUrl(string? serSlug)
+        {
+            return $"https://www.thetvdb.com/movies/{serSlug}";
         }
     }
 }

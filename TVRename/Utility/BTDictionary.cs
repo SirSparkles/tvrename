@@ -4,6 +4,7 @@ using System.Windows.Forms;
 
 namespace TVRename
 {
+    // ReSharper disable once InconsistentNaming
     public class BTDictionary : BTItem
     {
         public readonly List<BTDictionaryItem> Items;
@@ -24,9 +25,12 @@ namespace TVRename
             TreeNode n = new TreeNode("Dictionary");
             tn.Add(n);
             foreach (BTDictionaryItem t in Items)
+            {
                 t.Tree(n.Nodes);
+            }
         }
 
+        // ReSharper disable once UnusedMethodReturnValue.Global
         public bool RemoveItem(string key)
         {
             for (int i = 0; i < Items.Count; i++)
@@ -41,14 +45,16 @@ namespace TVRename
             return false;
         }
 
-        public BTItem GetItem(string key) => GetItem(key, false);
+        public BTItem? GetItem(string key) => GetItem(key, false);
 
-        public BTItem GetItem(string key, bool ignoreCase)
+        public BTItem? GetItem(string key, bool ignoreCase)
         {
             foreach (BTDictionaryItem t in Items)
             {
-                if ((t.Key == key) || (ignoreCase && ((t.Key.ToLower() == key.ToLower()))))
+                if (t.Key == key || ignoreCase && t.Key.ToLower() == key.ToLower())
+                {
                     return t.Data;
+                }
             }
 
             return null;
@@ -56,11 +62,13 @@ namespace TVRename
 
         public override void Write(System.IO.Stream sw)
         {
-            sw.WriteByte((byte) 'd');
+            sw.WriteByte((byte)'d');
             foreach (BTDictionaryItem i in Items)
+            {
                 i.Write(sw);
+            }
 
-            sw.WriteByte((byte) 'e');
+            sw.WriteByte((byte)'e');
         }
     }
 }

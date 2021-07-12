@@ -13,19 +13,19 @@ namespace TVRename.Settings.AppState
 
         public static State LoadFromDefaultFile() => LoadFromFile(PathManager.StateFile.FullName);
 
-        public static State LoadFromFile(string path)
+        private static State LoadFromFile(string path)
         {
             if (File.Exists(path))
             {
                 try
                 {
-                    XmlSerializer? serializer = new XmlSerializer(typeof(State));
-                    using (XmlReader? reader = XmlReader.Create(path))
+                    XmlSerializer serializer = new XmlSerializer(typeof(State));
+                    using (XmlReader reader = XmlReader.Create(path))
                     {
                         return (State)serializer.Deserialize(reader);
                     }
                 }
-                catch(Exception ex)
+                catch (Exception ex)
                 {
                     Logger.Warn(ex, "Could not load app state file {0}", path);
                     return new State();
@@ -40,11 +40,11 @@ namespace TVRename.Settings.AppState
             SaveToFile(PathManager.StateFile.FullName);
         }
 
-        public void SaveToFile(string path)
+        private void SaveToFile(string path)
         {
-            XmlSerializer? serializer = new XmlSerializer(typeof(State));
-            XmlWriterSettings xmlWriterSettings = new XmlWriterSettings {Indent = true};
-            using (XmlWriter? xmlWriter = XmlWriter.Create(path, xmlWriterSettings))
+            XmlSerializer serializer = new XmlSerializer(typeof(State));
+            XmlWriterSettings xmlWriterSettings = new XmlWriterSettings { Indent = true };
+            using (XmlWriter xmlWriter = XmlWriter.Create(path, xmlWriterSettings))
             {
                 serializer.Serialize(xmlWriter, this);
             }

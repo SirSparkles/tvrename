@@ -1,30 +1,31 @@
-// 
+//
 // Main website for TVRename is http://tvrename.com
-// 
+//
 // Source code available at https://github.com/TV-Rename/tvrename
-// 
+//
 // Copyright (c) TV Rename. This code is released under GPLv3 https://github.com/TV-Rename/tvrename/blob/master/LICENSE.md
-// 
+//
 
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using JetBrains.Annotations;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using FileInfo = Alphaleonis.Win32.Filesystem.FileInfo;
+
 namespace TVRename
 {
     public abstract class ActionNfo : ActionWriteMetadata
     {
-
         #region Action Members
 
         protected ActionNfo([NotNull] FileInfo where, [NotNull] ShowConfiguration sI) : base(where, sI)
         {
         }
+
         protected ActionNfo([NotNull] FileInfo where, [NotNull] MovieConfiguration mc) : base(where, mc)
         {
         }
@@ -39,7 +40,7 @@ namespace TVRename
                 }
 
                 ActionOutcome actionOutcome = UpdateFile();
-                Where.LastWriteTime = DateTimeOffset.FromUnixTimeSeconds(UpdateTime()??0).UtcDateTime;
+                Where.LastWriteTime = DateTimeOffset.FromUnixTimeSeconds(UpdateTime() ?? 0).UtcDateTime;
                 return actionOutcome;
             }
             catch (IOException ex)
@@ -68,6 +69,7 @@ namespace TVRename
                 }
             }
         }
+
         protected abstract long? UpdateTime();
 
         private void CreateBlankFile()
@@ -119,7 +121,7 @@ namespace TVRename
         {
             XElement ratingsNode = root.GetOrCreateElement("ratings");
 
-            XElement ratingNode = ratingsNode.GetOrCreateElement("rating","name","tvdb");
+            XElement ratingNode = ratingsNode.GetOrCreateElement("rating", "name", "tvdb");
             ratingNode.UpdateAttribute("name", "tvdb");
 
             ratingNode.UpdateAttribute("max", "10");
@@ -147,18 +149,18 @@ namespace TVRename
             if (needToUpdate)
             {
                 xElements.Single().Value = idValue;
-                xElements.Single().UpdateAttribute(NODE_ATTRIBUTE_DEFAULT,defaultState);
+                xElements.Single().UpdateAttribute(NODE_ATTRIBUTE_DEFAULT, defaultState);
             }
             else
             {
-                root.Add(new XElement(NODE_NAME,new XAttribute(NODE_ATTRIBUTE_TYPE, idType), new XAttribute(NODE_ATTRIBUTE_DEFAULT, defaultState),idValue));
+                root.Add(new XElement(NODE_NAME, new XAttribute(NODE_ATTRIBUTE_TYPE, idType), new XAttribute(NODE_ATTRIBUTE_DEFAULT, defaultState), idValue));
             }
         }
 
         protected static void ReplaceActors([NotNull] XElement root, [NotNull] IEnumerable<Actor> selectedShowActors)
         {
             IEnumerable<Actor> showActors = selectedShowActors as Actor[] ?? selectedShowActors.ToArray();
-            if (! showActors.ToList().Any())
+            if (!showActors.ToList().Any())
             {
                 return;
             }
@@ -168,7 +170,7 @@ namespace TVRename
             {
                 oldActor.Remove();
             }
-            
+
             // actors...
             foreach (Actor aa in showActors.Where(aa => !string.IsNullOrEmpty(aa.ActorName)))
             {
@@ -179,28 +181,87 @@ namespace TVRename
                     tAdd.Add(new XElement("role", aa.ActorRole));
                 }
 
-                if (aa.ActorSortOrder>0)
+                if (aa.ActorSortOrder >= 0)
                 {
                     tAdd.Add(new XElement("order", aa.ActorSortOrder));
                 }
 
                 if (!string.IsNullOrWhiteSpace(aa.ActorImage))
                 {
-                    tAdd.Add(new XElement("thumb", TheTVDB.API.GetImageURL(aa.ActorImage)));
+                    tAdd.Add(new XElement("thumb", aa.ActorImage));
                 }
 
                 root.Add(tAdd);
             }
         }
 
-        protected static void UpdateId([NotNull] XElement root, [NotNull] string idType, [NotNull] string defaultState, int idValue)
+        protected static void ReplaceThumbs(XElement root, string aspectAttributeName, IEnumerable<MediaImage> images)
         {
-            UpdateId(root,idType,defaultState,idValue.ToString());
+            {
+                List<MediaImage> newImages = images.ToList();
+                if (!newImages.Any())
+                {
+                    return;
+                }
+
+                List<XElement> elemsToRemove = root.Elements("thumb")
+                    .Where(x => x.Attribute("aspect")?.ToString().Equals(aspectAttributeName) ?? false).ToList();
+
+                foreach (XElement oldActor in elemsToRemove)
+                {
+                    oldActor.Remove();
+                }
+
+                foreach (MediaImage m in newImages.Where(i => i.ImageUrl.HasValue()))
+                {
+                    XElement tAdd = new XElement("thumb");
+                    tAdd.Add(new XAttribute("aspect", aspectAttributeName));
+                    tAdd.Add(new XAttribute("preview", m.ThumbnailUrl ?? string.Empty));
+                    tAdd.Value = m.ImageUrl!;
+                    root.Add(tAdd);
+                }
+            }
         }
 
-        #endregion
+        protected static void ReplaceFanart(XElement root, IEnumerable<MediaImage> images)
+        {
+            {
+                List<MediaImage> newImages = images.ToList();
+                if (!newImages.Any())
+                {
+                    return;
+                }
+
+                List<XElement> elemsToRemove = root.Elements("fanart").ToList();
+
+                foreach (XElement oldActor in elemsToRemove)
+                {
+                    oldActor.Remove();
+                }
+
+                XElement fanartElement = new XElement("fanart");
+                root.Add(fanartElement);
+
+                // actors...
+                foreach (MediaImage m in newImages.Where(i => i.ImageUrl.HasValue()))
+                {
+                    XElement tAdd = new XElement("thumb");
+                    tAdd.Add(new XAttribute("preview", m.ThumbnailUrl ?? string.Empty));
+                    tAdd.Value = m.ImageUrl!;
+                    fanartElement.Add(tAdd);
+                }
+            }
+        }
+
+        protected static void UpdateId([NotNull] XElement root, [NotNull] string idType, [NotNull] string defaultState, int idValue)
+        {
+            UpdateId(root, idType, defaultState, idValue.ToString());
+        }
+
+        #endregion Action Members
 
         #region Item Members
+
         public override bool SameAs(Item o)
         {
             return o is ActionNfo nfo && nfo.Where == Where;
@@ -230,6 +291,7 @@ namespace TVRename
 
             return string.Compare(Where.FullName + Episode.Name, nfo.Where.FullName + nfo.Episode.Name, StringComparison.Ordinal);
         }
-        #endregion
+
+        #endregion Item Members
     }
 }
