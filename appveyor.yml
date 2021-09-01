@@ -57,7 +57,7 @@ artifacts:
 deploy:
 - provider: GitHub
   auth_token:
-    secure: N9IXwzwtulNUU5FVDy1+z7ZKbYuSWhtrrTosnaoLApyLas6XEd1whQNZYnpYKBnJ
+    secure: RLKnZ2rTJjFFyO6MSaAy4NU7xcl/uIQABbA238vhHqAOvdiyQ4s+S3nKlI5HnXwT
   artifact: 'TVRename-$(appveyor_build_version)'
   on:
     appveyor_repo_tag: true
